@@ -16,7 +16,6 @@
 #include <SysInit.hpp>
 #include <ALFmxLayouts.hpp>
 #include <ALFmxObjects.hpp>
-#include <ALFmxImgList.hpp>
 #include <ALFmxStdCtrls.hpp>
 #include <ALFmxCommon.hpp>
 #include <ALFmxTabControl.hpp>
@@ -25,6 +24,14 @@
 #include <ALFmxEdit.hpp>
 #include <ALCommon.hpp>
 #include <ALFMXTypes3D.hpp>
+#include <ALStringList.hpp>
+#include <ALString.hpp>
+#include <ALQuickSortList.hpp>
+#include <ALMime.hpp>
+#include <ALInit.hpp>
+#include <ALCipher.hpp>
+#include <ALAVLBinaryTree.hpp>
+#include <ALVideoPlayer.hpp>
 #include <Winapi.Windows.hpp>	// (rtl)
 #include <Winapi.PsAPI.hpp>	// (rtl)
 #include <System.Character.hpp>	// (rtl)

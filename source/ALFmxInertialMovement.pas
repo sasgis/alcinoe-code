@@ -4,8 +4,8 @@ unit ALFmxInertialMovement;
 //https://quality.embarcadero.com/browse/RSP-15273
 //i couldn't update the Tanicalculation and was forced to fully copy/past the entire unit :(
 //i rename Tanicalculation in TALAnicalculation to not made any confusion
-{$IF CompilerVersion > 31}
-  {$MESSAGE WARN 'Check if FMX.InertialMovement.pas was not updated from the version in delphi berlin 10.1 and adjust the IFDEF'}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if FMX.InertialMovement.pas was not updated and adjust the IFDEF'}
 {$ENDIF}
 
 interface
@@ -17,7 +17,8 @@ uses System.Types,
      System.Classes,
      System.Generics.Collections,
      System.Messaging,
-     FMX.Types;
+     FMX.Types,
+     ALFmxCommon;
 
 type
 
@@ -41,55 +42,6 @@ const
   ALDefaultVelocityFactor = 1;
 
 type
-
-  TALPointD = record
-    X: Double;
-    Y: Double;
-  public
-    constructor Create(const P: TALPointD); overload;
-    constructor Create(const P: TPointF); overload;
-    constructor Create(const P: TPoint); overload;
-    constructor Create(const X, Y: Double); overload;
-    procedure SetLocation(const P: TALPointD);
-    class operator Equal(const Lhs, Rhs: TALPointD): Boolean;
-    class operator NotEqual(const Lhs, Rhs: TALPointD): Boolean; overload;
-    class operator Add(const Lhs, Rhs: TALPointD): TALPointD;
-    class operator Subtract(const Lhs, Rhs: TALPointD): TALPointD;
-    class operator Implicit(const APointF: TPointF): TALPointD;
-    function Distance(const P2: TALPointD): Double;
-    function Abs: Double;
-    procedure Offset(const DX, DY: Double);
-  end;
-
-  TALRectD = record
-    Left, Top, Right, Bottom: Double;
-  private
-    function GetHeight: Double;
-    function GetWidth: Double;
-    procedure SetHeight(const Value: Double);
-    procedure SetWidth(const Value: Double);
-    function GetTopLeft: TALPointD;
-    procedure SetTopLeft(const P: TALPointD);
-    function GetBottomRight: TALPointD;
-    procedure SetBottomRight(const P: TALPointD);
-  public
-    constructor Create(const Origin: TALPointD); overload;
-    // empty rect at given origin
-    constructor Create(const Left, Top, Right, Bottom: Double); overload;
-    // at x, y with width and height
-    // operator overloads
-    class operator Equal(const Lhs, Rhs: TALRectD): Boolean;
-    class operator NotEqual(const Lhs, Rhs: TALRectD): Boolean;
-    class function Empty: TALRectD; inline; static;
-    // changing the width is always relative to Left;
-    property Width: Double read GetWidth write SetWidth;
-    // changing the Height is always relative to Top
-    property Height: Double read GetHeight write SetHeight;
-    procedure Inflate(const DX, DY: Double);
-    procedure Offset(const DX, DY: Double);
-    property TopLeft: TALPointD read GetTopLeft write SetTopLeft;
-    property BottomRight: TALPointD read GetBottomRight write SetBottomRight;
-  end;
 
   TALAniCalculations = class(TPersistent)
   public type
@@ -143,7 +95,8 @@ type
     FInDoStop: Boolean;
     FMoved: Boolean;
     FStarted: Boolean;
-    FBoundsAnimation: Boolean;
+    FBoundsAnimationAtMinTarget: Boolean;
+    FBoundsAnimationAtMaxTarget: Boolean;
     FAutoShowing: Boolean;
     FOpacity: Single;
     FShown: Boolean;
@@ -174,7 +127,10 @@ type
     procedure CalcVelocity(const Time: TDateTime = 0);
     procedure InternalStart;
     procedure InternalTerminated;
+    function GetBoundsAnimation: Boolean;
     procedure SetBoundsAnimation(const Value: Boolean);
+    procedure SetBoundsAnimationAtMinTarget(const Value: Boolean);
+    procedure SetBoundsAnimationAtMaxTarget(const Value: Boolean);
     procedure UpdateViewportPositionByBounds;
     procedure SetAutoShowing(const Value: Boolean);
     procedure SetShown(const Value: Boolean);
@@ -211,8 +167,6 @@ type
     property UpVelocity: TALPointD read FUpVelocity;
     property UpPosition: TALPointD read FUpPosition;
     property UpDownTime: TDateTime read FUpDownTime;
-    property MinTarget: TTarget read FMinTarget;
-    property MaxTarget: TTarget read FMaxTarget;
     property Target: TTarget read FTarget;
     property MinVelocity: Integer read FMinVelocity write FMinVelocity default ALDefaultMinVelocity;
     property MaxVelocity: Integer read FMaxVelocity write FMaxVelocity default ALDefaultMaxVelocity;
@@ -231,15 +185,20 @@ type
     property Animation: Boolean read FAnimation write SetAnimation default False;
     property AutoShowing: Boolean read FAutoShowing write SetAutoShowing default False;
     property Averaging: Boolean read FAveraging write FAveraging default False;
-    property BoundsAnimation: Boolean read FBoundsAnimation write SetBoundsAnimation default True;
+    property BoundsAnimation: Boolean read GetBoundsAnimation write SetBoundsAnimation default True;
+    property BoundsAnimationAtMinTarget: Boolean read FBoundsAnimationAtMinTarget write SetBoundsAnimationAtMinTarget default True;
+    property BoundsAnimationAtMaxTarget: Boolean read FBoundsAnimationAtMaxTarget write SetBoundsAnimationAtMaxTarget default True;
     property TouchTracking: TTouchTracking read FTouchTracking write SetTouchTracking default [ttVertical, ttHorizontal];
     property TargetCount: Integer read GetTargetCount;
     procedure SetTargets(const ATargets: array of TTarget);
     procedure GetTargets(var ATargets: array of TTarget);
+    property MinTarget: TTarget read FMinTarget;
+    property MaxTarget: TTarget read FMaxTarget;
     procedure UpdatePosImmediately(const Force: Boolean = False);
     property CurrentVelocity: TALPointD read FCurrentVelocity write FCurrentVelocity;
     property ViewportPosition: TALPointD read FViewportPosition write SetViewportPosition;
     property ViewportPositionF: TPointF read GetViewportPositionF write SetViewportPositionF;
+    property DownPosition: TALPointD read fDownPosition write fDownPosition;
     property LastTimeCalc: TDateTime read FLastTimeCalc;
     property Down: Boolean read FDown write SetDown;
     property Opacity: Single read GetOpacity;
@@ -289,196 +248,6 @@ begin
   Result := -CompareValue(CurrentValue, TargetValue, EpsilonPoint);
 end;
 
-{ TALPointD }
-
-{***********************************************}
-constructor TALPointD.Create(const P: TALPointD);
-begin
-  self.X := P.X;
-  self.Y := P.Y;
-end;
-
-{***********************************************}
-constructor TALPointD.Create(const X, Y: Double);
-begin
-  self.X := X;
-  self.Y := Y;
-end;
-
-{********************************************}
-constructor TALPointD.Create(const P: TPoint);
-begin
-  self.X := P.X;
-  self.Y := P.Y;
-end;
-
-{*********************************************}
-constructor TALPointD.Create(const P: TPointF);
-begin
-  self.X := P.X;
-  self.Y := P.Y;
-end;
-
-{*****************************************************************}
-class operator TALPointD.Equal(const Lhs, Rhs: TALPointD): Boolean;
-begin
-  Result := SameValue(Lhs.X, Rhs.X) and
-    SameValue(Lhs.Y, Rhs.Y);
-end;
-
-{*******************************************************************}
-class operator TALPointD.Implicit(const APointF: TPointF): TALPointD;
-begin
-  Result.X := APointF.X;
-  Result.Y := APointF.Y;
-end;
-
-{********************************************************************}
-class operator TALPointD.NotEqual(const Lhs, Rhs: TALPointD): Boolean;
-begin
-  Result := not(Lhs = Rhs);
-end;
-
-{*****************************************************************}
-class operator TALPointD.Add(const Lhs, Rhs: TALPointD): TALPointD;
-begin
-  Result.X := Lhs.X + Rhs.X;
-  Result.Y := Lhs.Y + Rhs.Y;
-end;
-
-{**********************************************************************}
-class operator TALPointD.Subtract(const Lhs, Rhs: TALPointD): TALPointD;
-begin
-  Result.X := Lhs.X - Rhs.X;
-  Result.Y := Lhs.Y - Rhs.Y;
-end;
-
-{*****************************}
-function TALPointD.Abs: Double;
-begin
-  Result := Sqrt(Sqr(self.X) + Sqr(self.Y));
-end;
-
-{*******************************************************}
-function TALPointD.Distance(const P2: TALPointD): Double;
-begin
-  Result := Sqrt(Sqr(self.X - P2.X) + Sqr(self.Y - P2.Y));
-end;
-
-{***********************************************}
-procedure TALPointD.Offset(const DX, DY: Double);
-begin
-  self.X := self.X + DX;
-  self.Y := self.Y + DY;
-end;
-
-{**************************************************}
-procedure TALPointD.SetLocation(const P: TALPointD);
-begin
-  self.X := RoundTo(P.X, ALEpsilonRange);
-  self.Y := RoundTo(P.Y, ALEpsilonRange);
-end;
-
-{***************************************************}
-constructor TALRectD.Create(const Origin: TALPointD);
-begin
-  TopLeft := Origin;
-  BottomRight := Origin;
-end;
-
-{******************************************************************}
-constructor TALRectD.Create(const Left, Top, Right, Bottom: Double);
-begin
-  self.Left := Left;
-  self.Top := Top;
-  self.Right := Right;
-  self.Bottom := Bottom;
-end;
-
-{**************************************}
-class function TALRectD.Empty: TALRectD;
-begin
-  Result := TALRectD.Create(0, 0, 0, 0);
-end;
-
-{***************************************************************}
-class operator TALRectD.Equal(const Lhs, Rhs: TALRectD): Boolean;
-begin
-  Result := (Lhs.TopLeft = Rhs.TopLeft) and (Lhs.BottomRight = Rhs.BottomRight);
-end;
-
-{******************************************************************}
-class operator TALRectD.NotEqual(const Lhs, Rhs: TALRectD): Boolean;
-begin
-  Result := not(Lhs = Rhs);
-end;
-
-{**********************************}
-function TALRectD.GetHeight: Double;
-begin
-  Result := self.Bottom - self.Top;
-end;
-
-{************************************************}
-procedure TALRectD.SetHeight(const Value: Double);
-begin
-  self.Bottom := self.Top + Value;
-end;
-
-{*********************************}
-function TALRectD.GetWidth: Double;
-begin
-  Result := self.Right - self.Left;
-end;
-
-{***********************************************}
-procedure TALRectD.SetWidth(const Value: Double);
-begin
-  self.Right := self.Left + Value;
-end;
-
-{***********************************************}
-procedure TALRectD.Inflate(const DX, DY: Double);
-begin
-  TopLeft.Offset(-DX, -DY);
-  BottomRight.Offset(DX, DY);
-end;
-
-{**********************************************}
-procedure TALRectD.Offset(const DX, DY: Double);
-begin
-  TopLeft.Offset(DX, DY);
-  BottomRight.Offset(DX, DY);
-end;
-
-{**************************************}
-function TALRectD.GetTopLeft: TALPointD;
-begin
-  Result.X := Left;
-  Result.Y := Top;
-end;
-
-{************************************************}
-procedure TALRectD.SetTopLeft(const P: TALPointD);
-begin
-  Left := P.X;
-  Top := P.Y;
-end;
-
-{******************************************}
-function TALRectD.GetBottomRight: TALPointD;
-begin
-  Result.X := Right;
-  Result.Y := Bottom;
-end;
-
-{****************************************************}
-procedure TALRectD.SetBottomRight(const P: TALPointD);
-begin
-  Right := P.X;
-  Bottom := P.Y;
-end;
-
 {*********************************************************}
 constructor TALAniCalculations.Create(AOwner: TPersistent);
 begin
@@ -524,7 +293,8 @@ begin
     Animation := LSource.Animation;
     AutoShowing := LSource.AutoShowing;
     Averaging := LSource.Averaging;
-    BoundsAnimation := LSource.BoundsAnimation;
+    BoundsAnimationAtMinTarget := LSource.BoundsAnimationAtMinTarget;
+    BoundsAnimationAtMaxTarget := LSource.BoundsAnimationAtMaxTarget;
     Interval := LSource.Interval;
     TouchTracking := LSource.TouchTracking;
     SetLength(LTargets, LSource.TargetCount);
@@ -543,7 +313,8 @@ begin
     Animation := False;
     AutoShowing := False;
     Averaging := False;
-    BoundsAnimation := True;
+    BoundsAnimationAtMinTarget := True;
+    BoundsAnimationAtMaxTarget := True;
     Interval := ALDefaultIntervalOfAni;
     TouchTracking := [ttVertical, ttHorizontal];
     SetTargets([]);
@@ -597,12 +368,41 @@ begin
   end;
 end;
 
+{******************************************************}
+function TALAniCalculations.GetBoundsAnimation: Boolean;
+begin
+  result := FBoundsAnimationAtMinTarget and
+            FBoundsAnimationAtMaxTarget;
+end;
+
 {********************************************************************}
 procedure TALAniCalculations.SetBoundsAnimation(const Value: Boolean);
 begin
-  if FBoundsAnimation <> Value then
+  if (FBoundsAnimationAtMinTarget <> Value) or
+     (FBoundsAnimationAtMaxTarget <> Value) then
   begin
-    FBoundsAnimation := Value;
+    FBoundsAnimationAtMinTarget := Value;
+    FBoundsAnimationAtMaxTarget := Value;
+    SetViewportPosition(ViewportPosition);
+  end;
+end;
+
+{*******************************************************************************}
+procedure TALAniCalculations.SetBoundsAnimationAtMinTarget(const Value: Boolean);
+begin
+  if FBoundsAnimationAtMinTarget <> Value then
+  begin
+    FBoundsAnimationAtMinTarget := Value;
+    SetViewportPosition(ViewportPosition);
+  end;
+end;
+
+{*******************************************************************************}
+procedure TALAniCalculations.SetBoundsAnimationAtMaxTarget(const Value: Boolean);
+begin
+  if FBoundsAnimationAtMaxTarget <> Value then
+  begin
+    FBoundsAnimationAtMaxTarget := Value;
     SetViewportPosition(ViewportPosition);
   end;
 end;
@@ -1276,23 +1076,24 @@ end;
 
 {**********************************************************}
 procedure TALAniCalculations.UpdateViewportPositionByBounds;
-  function NotBoundsAni(const Vert: Boolean): Boolean;
+
+  function NotBoundsAni(const Vert: Boolean; const aBoundsAnimation: Boolean): Boolean;
   begin
     if Vert then
-      Result := not(BoundsAnimation and (ttVertical in TouchTracking))
+      Result := not(aBoundsAnimation and (ttVertical in TouchTracking))
     else
-      Result := not(BoundsAnimation and (ttHorizontal in TouchTracking));
+      Result := not(aBoundsAnimation and (ttHorizontal in TouchTracking));
   end;
 
 begin
   if FMinTarget.TargetType = TTargetType.Min then
   begin
-    if (FViewportPosition.X < FMinTarget.Point.X) and NotBoundsAni(False) then
+    if (FViewportPosition.X < FMinTarget.Point.X) and NotBoundsAni(False, BoundsAnimationatMinTarget) then
     begin
       FViewportPosition.X := FMinTarget.Point.X;
       FCurrentVelocity.X := 0;
     end;
-    if (FViewportPosition.Y < FMinTarget.Point.Y) and NotBoundsAni(True) then
+    if (FViewportPosition.Y < FMinTarget.Point.Y) and NotBoundsAni(True, BoundsAnimationatMinTarget) then
     begin
       FViewportPosition.Y := FMinTarget.Point.Y;
       FCurrentVelocity.Y := 0;
@@ -1300,12 +1101,12 @@ begin
   end;
   if FMaxTarget.TargetType = TTargetType.Max then
   begin
-    if (FViewportPosition.X > FMaxTarget.Point.X) and NotBoundsAni(False) then
+    if (FViewportPosition.X > FMaxTarget.Point.X) and NotBoundsAni(False, BoundsAnimationatMaxTarget) then
     begin
       FViewportPosition.X := FMaxTarget.Point.X;
       FCurrentVelocity.X := 0;
     end;
-    if (FViewportPosition.Y > FMaxTarget.Point.Y) and NotBoundsAni(True) then
+    if (FViewportPosition.Y > FMaxTarget.Point.Y) and NotBoundsAni(True, BoundsAnimationatMaxTarget) then
     begin
       FViewportPosition.Y := FMaxTarget.Point.Y;
       FCurrentVelocity.Y := 0;

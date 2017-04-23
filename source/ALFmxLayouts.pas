@@ -1,9 +1,7 @@
 unit ALFmxLayouts;
 
-//unfortunatly because emb decide to forbid access to private member via class helper
-//https://quality.embarcadero.com/browse/RSP-15273
-{$IF CompilerVersion > 31}
-  {$MESSAGE WARN 'Check if FMX.Layouts.pas was not updated from the version in delphi berlin 10.1 and adjust the IFDEF'}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if FMX.Layouts.pas was not updated and adjust the IFDEF'}
 {$ENDIF}
 
 interface
@@ -204,6 +202,9 @@ type
     property OnPainting;
     property OnPaint;
     property OnResize;
+    {$IF CompilerVersion > 32} // tokyo
+    property OnResized;
+    {$ENDIF}
     { Drag and Drop events }
     property OnDragEnter;
     property OnDragLeave;
@@ -269,6 +270,9 @@ type
     property OnPainting;
     property OnPaint;
     property OnResize;
+    {$IF CompilerVersion > 32} // tokyo
+    property OnResized;
+    {$ENDIF}
     { Drag and Drop events }
     property OnDragEnter;
     property OnDragLeave;
@@ -334,6 +338,9 @@ type
     property OnPainting;
     property OnPaint;
     property OnResize;
+    {$IF CompilerVersion > 32} // tokyo
+    property OnResized;
+    {$ENDIF}
     { Drag and Drop events }
     property OnDragEnter;
     property OnDragLeave;
@@ -371,12 +378,13 @@ uses System.SysUtils,
      FMX.Effects,
      FMX.utils,
      FMX.Ani,
+     AlFmxCommon,
      ALCommon;
 
 {*******************************************************************************************************}
 // http://stackoverflow.com/questions/39317984/does-the-delphi-firemonkey-dorealign-implemented-correctly
 // https://quality.embarcadero.com/browse/RSP-15768
-// often we assign some event to some control onresize (like TText with autosize=True) to 
+// often we assign some event to some control onresize (like TText with autosize=True) to
 // resize their parentcontrols to the same size as them. But in this way the problem is that if 
 // we resize the parentcontrol during it's dorealign process then it will not call again dorealign
 procedure TALLayout.DoRealign;
@@ -663,13 +671,13 @@ procedure TALCustomScrollBox.DoRealign;
   begin
     SetLength(aNewTargets, 2);
     aNewTargets[0].TargetType := TALAniCalculations.TTargetType.Min;
-    aNewTargets[0].Point := Tpointf.Create(0,0);
+    aNewTargets[0].Point := TALPointD.Create(0,0);
     aNewTargets[1].TargetType := TALAniCalculations.TTargetType.Max;
     if (fHScrollBar <> nil) and
-       (fVScrollBar <> nil) then aNewTargets[1].Point := TpointF.Create(aContentRect.Width - width, aContentRect.Height - height)
-    else if (fVScrollBar <> nil) then aNewTargets[1].Point := TpointF.Create(0, aContentRect.Height - height)
-    else if (fHScrollBar <> nil) then aNewTargets[1].Point := TpointF.Create(aContentRect.Width - width, 0)
-    else aNewTargets[1].Point := TpointF.Create(0, 0);
+       (fVScrollBar <> nil) then aNewTargets[1].Point := TALPointD.Create(aContentRect.Width - width, aContentRect.Height - height)
+    else if (fVScrollBar <> nil) then aNewTargets[1].Point := TALPointD.Create(0, aContentRect.Height - height)
+    else if (fHScrollBar <> nil) then aNewTargets[1].Point := TALPointD.Create(aContentRect.Width - width, 0)
+    else aNewTargets[1].Point := TALPointD.Create(0, 0);
     AniCalculations.SetTargets(aNewTargets);
   end;
 

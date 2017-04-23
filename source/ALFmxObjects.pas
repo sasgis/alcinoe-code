@@ -1,5 +1,13 @@
 unit ALFmxObjects;
 
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if FMX.Objects.pas was not updated and adjust the IFDEF'}
+{$ENDIF}
+
+{$IF defined(MACOS) and not defined(IOS)}
+  {$DEFINE _MACOS}
+{$IFEND}
+
 interface
 
 uses System.Classes,
@@ -11,8 +19,6 @@ uses System.Classes,
      {$ENDIF}
      {$IF defined(ANDROID)}
      system.Messaging,
-     system.Generics.collections,
-     Androidapi.JNI.JavaTypes,
      FMX.TextLayout.GPU,
      FMX.types3D,
      {$ENDIF}
@@ -21,19 +27,84 @@ uses System.Classes,
      FMX.TextLayout.GPU,
      FMX.types3D,
      {$ENDIF}
+     {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+     FMX.effects,
+     {$ENDIF}
      FMX.controls,
      FMX.types,
      FMX.textlayout,
      FMX.graphics,
-     FMX.objects;
+     FMX.objects,
+     ALFmxCommon;
 
 type
 
-  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-  TALRectangle = class(TRectangle)
+  {~~~~~~~~~~~~~~~~~~}
+  TALImageWrapMode = (
+      //Display the image with its original dimensions:
+      //* The image is placed in the upper-left corner of the rectangle of the control.
+      //* If the image is larger than the control's rectangle, then only the upper-left part of the image,
+      //  which fits in the rectangle of the control, is shown. The image is not resized.
+      Original,
+
+      //Best fit the image in the rectangle of the control:
+      //* If any dimension of the image is larger than the rectangle of the control, then scales down the image
+      //  (keeping image proportions – the ratio between the width and height) to fit the whole image in the rectangle
+      //  of the control. That is, either the width of the resized image is equal to the width of the control's rectangle
+      //  or the height of the resized image is equal to the height of the rectangle of the control. The whole image
+      //  should be displayed. The image is displayed centered in the rectangle of the control.
+      // * If the original image is smaller than the rectangle of the control, then the image is stretched to best fit in
+      //  the rectangle of the control. Whole the image should be displayed. The image is displayed centered in the rectangle of the control.
+      Fit,
+
+      //Stretch the image to fill the entire rectangle of the control.
+      Stretch,
+
+      //Tile (multiply) the image to cover the entire rectangle of the control:
+      //* If the image is larger than the rectangle of the control, then only the
+      //  upper-left part of the image, which fits in the rectangle of the control, is shown. The image is not resized.
+      //* If the image (original size) is smaller than the rectangle of the control, then the multiple images are tiled
+      //  (placed one next to another) to fill the entire rectangle of the control. The images are placed beginning from
+      //  the upper-left corner of the rectangle of the control.
+      Tile,
+
+      //Center the image to the rectangle of the control:
+      //* The image is always displayed at its original size (regardless whether the rectangle of the control is larger or smaller than the image size).
+      Center,
+
+      //Fit the image in the rectangle of the control:
+      //* If any dimension of the image is larger than the rectangle of the control, then scales down the image (keeping image proportions--the ratio between the width and height)
+      //  to fit the whole image in the rectangle of the control. That is, either the width of the resized image is equal to the width of the control's rectangle or the height of the
+      //  resized image is equal to the height of the control's rectangle. Whole the image should be displayed. The image is displayed centered in the rectangle of the control.
+      //* If the original image is smaller than the rectangle of the control, then the image is not resized. The image is displayed centered in the rectangle of the control.
+      Place,
+
+      //Best fit the image in the rectangle of the control:
+      //* If any dimension of the image is larger than the rectangle of the control, then scales down the image
+      //  (keeping image proportions – the ratio between the width and height) to fit the height or the width of the image in the rectangle
+      //  of the control and crop the extra part of the image. That is, the width of the resized image is equal to the width of the control's rectangle
+      //  AND the height of the resized image is equal to the height of the rectangle of the control.
+      // * If the original image is smaller than the rectangle of the control, then the image is stretched to best fit in
+      //  the rectangle of the control. Whole the image should be displayed.
+      FitAndCrop
+  );
+
+  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+  //Under delphi, we have multi-res bitmap for Timage or Tglyph. this mean that we can gave several bitmap for several screen scale.
+  //Exemple with a screen scale of 1 i will gave a bitmap of 100x100, for the screen scale of 1.5 i will gave a bitmap of 150*150, etc..
+  //so taking care that most screen scale are 1, 1.5, 2, 3, and 4 we must provide 4 pictures. In 99.9999 % of the case the developer will
+  //simply do a normal resize of the image (under photoshop or similar app) in the 5 of fewer screen scale (seriously is their any developer
+  //who will gave radically different image between scale 1 and scale n ?)
+  //But the resize algo to resize picture is quite powerful and often negligible. So if we gave only one bitmap (at the most biggest scale, 4)
+  //it's must be good/powerfull and it's will reduce also the size of the app.
+  //also from smartphone to tablet i notice that to keep a good ratio i must increase all the font size, and image by 15%. So using multires
+  //bitmap and if i want to avoid any resize (the purpose of multires bitmap as i understand) i must have 10 bitmaps per image !!
+  //so all of this to say that multi-res bitmap is a fundamentally wrong concept
+  TalImage = class(TControl)
   private
+    fResourceName: String;
+    FWrapMode: TALImageWrapMode;
     FScreenScale: single;
-    fdoubleBuffered: boolean;
     {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     fBufBitmap: TTexture;
     {$ELSE}
@@ -47,10 +118,104 @@ type
     procedure OpenGLContextLostHandler(const Sender : TObject; const Msg : TMessage);
     procedure OpenGLContextResetHandler(const Sender : TObject; const Msg : TMessage); // << because of https://quality.embarcadero.com/browse/RSP-16142
     {$ENDIF}
+    procedure SetWrapMode(const Value: TALImageWrapMode);
+    procedure setResourceName(const Value: String);
+  protected
+    procedure Paint; override;
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
+    property BufBitmap: TTexture read fBufBitmap;
+    {$ELSE}
+    property BufBitmap: Tbitmap read fBufBitmap;
+    {$ENDIF}
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
+    function MakeBufBitmap: TTexture; virtual;
+    {$ELSE}
+    function MakeBufBitmap: Tbitmap; virtual;
+    {$ENDIF}
+    procedure clearBufBitmap; virtual;
+  published
+    property Align;
+    property Anchors;
+    property ClipChildren default False;
+    property ClipParent default False;
+    property Cursor default crDefault;
+    property DragMode default TDragMode.dmManual;
+    property EnableDragHighlight default True;
+    property Enabled default True;
+    property Locked default False;
+    property Height;
+    property Hint;
+    property HitTest default True;
+    property Padding;
+    property Opacity;
+    property Margins;
+    property PopupMenu;
+    property Position;
+    property RotationAngle;
+    property RotationCenter;
+    property Scale;
+    property Size;
+    property TouchTargetExpansion;
+    property Visible default True;
+    property Width;
+    property ResourceName: String read fResourceName write setResourceName;
+    property WrapMode: TALImageWrapMode read FWrapMode write SetWrapMode default TALImageWrapMode.Fit;
+    property ParentShowHint;
+    property ShowHint;
+    {Drag and Drop events}
+    property OnDragEnter;
+    property OnDragLeave;
+    property OnDragOver;
+    property OnDragDrop;
+    property OnDragEnd;
+    {Mouse events}
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
+    property OnMouseWheel;
+    property OnMouseEnter;
+    property OnMouseLeave;
+    property OnPainting;
+    property OnPaint;
+    property OnResize;
+    {$IF CompilerVersion > 32} // tokyo
+    property OnResized;
+    {$ENDIF}
+  end;
+
+  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+  TALRectangle = class(TRectangle)
+  private
+    FScreenScale: single;
+    fdoubleBuffered: boolean;
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
+    fBufBitmap: TTexture;
+    {$ELSE}
+    fBufBitmap: Tbitmap;
+    {$ENDIF}
+    fBufBitmapRect: TRectF;
+    fBufSize: TsizeF;
+    fShadow: TALShadow;
+    {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+    fShadowEffect: TshadowEffect;
+    {$ENDIF}
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
+    FOpenGLContextLostId: integer;
+    FOpenGLContextResetId: Integer;
+    procedure OpenGLContextLostHandler(const Sender : TObject; const Msg : TMessage);
+    procedure OpenGLContextResetHandler(const Sender : TObject; const Msg : TMessage); // << because of https://quality.embarcadero.com/browse/RSP-16142
+    {$ENDIF}
     procedure SetdoubleBuffered(const Value: Boolean);
+    procedure SetShadow(const Value: TALShadow);
   protected
     procedure FillChanged(Sender: TObject); override;
     procedure StrokeChanged(Sender: TObject); override;
+    procedure ShadowChanged(Sender: TObject); virtual;
     procedure Paint; override;
     {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     property BufBitmap: TTexture read fBufBitmap;
@@ -68,6 +233,7 @@ type
     procedure clearBufBitmap; virtual;
   published
     property doubleBuffered: Boolean read fdoubleBuffered write setdoubleBuffered default true;
+    property shadow: TALShadow read fshadow write SetShadow;
   end;
 
   {~~~~~~~~~~~~~~~~~~~~~~~~}
@@ -82,6 +248,10 @@ type
     {$ENDIF}
     fBufBitmapRect: TRectF;
     fBufSize: TsizeF;
+    fShadow: TALShadow;
+    {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+    fShadowEffect: TshadowEffect;
+    {$ENDIF}
     {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     FOpenGLContextLostId: integer;
     FOpenGLContextResetId: Integer;
@@ -89,9 +259,11 @@ type
     procedure OpenGLContextResetHandler(const Sender : TObject; const Msg : TMessage); // << because of https://quality.embarcadero.com/browse/RSP-16142
     {$ENDIF}
     procedure SetdoubleBuffered(const Value: Boolean);
+    procedure SetShadow(const Value: TALShadow);
   protected
     procedure FillChanged(Sender: TObject); override;
     procedure StrokeChanged(Sender: TObject); override;
+    procedure ShadowChanged(Sender: TObject); virtual;
     procedure Paint; override;
     {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     property BufBitmap: TTexture read fBufBitmap;
@@ -109,6 +281,7 @@ type
     procedure clearBufBitmap; virtual;
   published
     property doubleBuffered: Boolean read fdoubleBuffered write setdoubleBuffered default true;
+    property shadow: TALShadow read fshadow write SetShadow;
   end;
 
   {~~~~~~~~~~~~~~~~~~~~}
@@ -155,14 +328,16 @@ type
   {~~~~~~~~~~~~~~}
   TALText = class;
 
-  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-  {$IF defined(android) or defined(IOS)}
-  TALDoubleBufferedTextLayoutNG = class(TTextLayoutNG)
+  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+  TALDoubleBufferedTextLayout = class(TTextLayout)
   private
     FScreenScale: single;
     [weak] fTextControl: TALText;
-    fdoubleBuffered: boolean;
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     fBufBitmap: TTexture;
+    {$ELSE}
+    fBufBitmap: Tbitmap;
+    {$ENDIF}
     fBufBitmapRect: TRectF;
     //-----
     fBufHorizontalAlign: TTextAlign;
@@ -178,23 +353,31 @@ type
     fBufText: string;
     fBufTextBreaked: Boolean;
     //-----
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     FOpenGLContextLostId: integer;
     FOpenGLContextResetId: Integer;
     procedure OpenGLContextLostHandler(const Sender : TObject; const Msg : TMessage);
     procedure OpenGLContextResetHandler(const Sender : TObject; const Msg : TMessage); // << because of https://quality.embarcadero.com/browse/RSP-16142
-    procedure SetdoubleBuffered(const Value: Boolean);
+    {$ENDIF}
   protected
     procedure DoRenderLayout; override;
     procedure DoDrawLayout(const ACanvas: TCanvas); override;
+    function GetTextHeight: Single; override;
+    function GetTextWidth: Single; override;
     function GetTextRect: TRectF; override;
+    function DoPositionAtPoint(const APoint: TPointF): Integer; override;
+    function DoRegionForRange(const ARange: TTextRange): TRegion; override;
   public
     constructor Create(const ACanvas: TCanvas; const aTextControl: TALText); reintroduce;
     destructor Destroy; override;
+    {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     function MakeBufBitmap: TTexture; virtual;
+    {$ELSE}
+    function MakeBufBitmap: Tbitmap; virtual;
+    {$ENDIF}
     procedure clearBufBitmap; virtual;
-    property doubleBuffered: Boolean read fdoubleBuffered write SetdoubleBuffered;
+    procedure ConvertToPath(const APath: TPathData); override;
   end;
-  {$ENDIF}
 
   {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
   // Note: we can use this class in for exemple Tlabel
@@ -211,9 +394,6 @@ type
   TALText = class(TControl)
   private
     fRestoreLayoutUpdateAfterLoaded: boolean;
-    {$IF (not DEFINED(IOS)) and (not DEFINED(ANDROID))}
-    fdoubleBuffered: boolean;
-    {$ENDIF}
     FAutoTranslate: Boolean;
     FAutoConvertFontFamily: boolean;
     FTextSettings: TTextSettings;
@@ -221,6 +401,18 @@ type
     FAutoSize: Boolean;
     fMaxWidth: Single;
     fMaxHeight: Single;
+    FYRadius: Single;
+    FXRadius: Single;
+    FCorners: TCorners;
+    FSides: TSides;
+    FFill: TBrush;
+    FStroke: TStrokeBrush;
+    fLineSpacing: single;
+    fTextIsHtml: boolean;
+    procedure SetFill(const Value: TBrush);
+    procedure SetStroke(const Value: TStrokeBrush);
+    function IsCornersStored: Boolean;
+    function IsSidesStored: Boolean;
     {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     function GetBufBitmap: TTexture;
     {$ELSE}
@@ -254,6 +446,12 @@ type
     {$ELSE}
     property BufBitmap: Tbitmap read GetBufBitmap;
     {$ENDIF}
+    procedure FillChanged(Sender: TObject); virtual;
+    procedure StrokeChanged(Sender: TObject); virtual;
+    procedure SetXRadius(const Value: Single); virtual;
+    procedure SetYRadius(const Value: Single); virtual;
+    procedure SetCorners(const Value: TCorners); virtual;
+    procedure SetSides(const Value: TSides); virtual;
     procedure SetParent(const Value: TFmxObject); override;
     procedure FontChanged; virtual;
     function SupportsPaintStage(const Stage: TPaintStage): Boolean; override;
@@ -330,9 +528,20 @@ type
     property OnPainting;
     property OnPaint;
     property OnResize;
+    {$IF CompilerVersion > 32} // tokyo
+    property OnResized;
+    {$ENDIF}
     property doubleBuffered: Boolean read GetdoubleBuffered write setdoubleBuffered default true;
     property AutoTranslate: Boolean read FAutoTranslate write FAutoTranslate default true;
     property AutoConvertFontFamily: Boolean read FAutoConvertFontFamily write fAutoConvertFontFamily default true;
+    property Fill: TBrush read FFill write SetFill;
+    property Stroke: TStrokeBrush read FStroke write SetStroke;
+    property Corners: TCorners read FCorners write SetCorners stored IsCornersStored;
+    property Sides: TSides read FSides write SetSides stored IsSidesStored;
+    property XRadius: Single read FXRadius write SetXRadius;
+    property YRadius: Single read FYRadius write SetYRadius;
+    property LineSpacing: single read fLineSpacing write fLineSpacing;
+    property TextIsHtml: boolean read fTextIsHtml write fTextIsHtml default false;
   end;
 
 procedure ALLockTexts(const aParentControl: Tcontrol);
@@ -340,6 +549,7 @@ procedure ALUnLockTexts(const aParentControl: Tcontrol);
 
 {$IFDEF debug}
 var
+  AlDebugImageMakeBufBitmapCount: integer;
   AlDebugRectangleMakeBufBitmapCount: integer;
   AlDebugCircleMakeBufBitmapCount: integer;
   AlDebugLineMakeBufBitmapCount: integer;
@@ -347,6 +557,7 @@ var
   AlDebugTextInheritedDoRenderLayoutCount: integer;
   AlDebugTextInheritedDoDrawLayoutCount: integer;
 
+  AlDebugImageMakeBufBitmapStopWatch: TstopWatch;
   AlDebugRectangleMakeBufBitmapStopWatch: TstopWatch;
   AlDebugCircleMakeBufBitmapStopWatch: TstopWatch;
   AlDebugLineMakeBufBitmapStopWatch: TstopWatch;
@@ -362,37 +573,295 @@ uses system.SysUtils,
      system.Math.Vectors,
      fmx.consts,
      fmx.platform,
+     {$IFDEF ALDPK}
+     system.ioutils,
+     ToolsAPI,
+     {$ENDIF}
      {$IF defined(ANDROID)}
      Androidapi.JNI.GraphicsContentViewText,
      Androidapi.JNIBridge,
      Androidapi.Bitmap,
-     Androidapi.Helpers,
      FMX.Canvas.GPU,
-     FMX.Helpers.Android,
-     FMX.Surfaces,
-     ALFmxTypes3D,
      {$ENDIF}
      {$IF defined(IOS)}
      iOSapi.CocoaTypes,
      iOSapi.CoreGraphics,
-     iOSapi.CoreText,
      iOSapi.UIKit,
      FMX.Canvas.GPU,
      FMX.Surfaces,
      ALFmxTypes3D,
      {$ENDIF}
-     ALCommon,
-     ALFmxCommon;
+     ALCommon;
+
+{**********************************************}
+constructor TALImage.Create(AOwner: TComponent);
+var aScreenSrv: IFMXScreenService;
+begin
+  inherited Create(AOwner);
+  fResourceName := '';
+  FWrapMode := TALImageWrapMode.Fit;
+  if TPlatformServices.Current.SupportsPlatformService(IFMXScreenService, aScreenSrv) then FScreenScale := aScreenSrv.GetScreenScale
+  else FScreenScale := 1;
+  fBufBitmap := nil;
+  {$IF defined(ANDROID) or defined(IOS)}
+  FOpenGLContextLostId := TMessageManager.DefaultManager.SubscribeToMessage(TContextLostMessage, OpenGLContextLostHandler);
+  FOpenGLContextResetId := TMessageManager.DefaultManager.SubscribeToMessage(TContextResetMessage, OpenGLContextResetHandler);
+  {$ENDIF}
+  SetAcceptsControls(False);
+end;
+
+{**************************}
+destructor TALImage.Destroy;
+begin
+  clearBufBitmap;
+  {$IF defined(ANDROID) or defined(IOS)}
+  TMessageManager.DefaultManager.Unsubscribe(TContextLostMessage, FOpenGLContextLostId);
+  TMessageManager.DefaultManager.Unsubscribe(TContextResetMessage, FOpenGLContextResetId);
+  {$ENDIF}
+  inherited;
+end;
+
+{********************************}
+procedure TALImage.clearBufBitmap;
+begin
+  ALFreeAndNil(fBufBitmap);
+end;
+
+{************************************}
+{$IF DEFINED(IOS) or DEFINED(ANDROID)}
+function TALImage.MakeBufBitmap: TTexture;
+{$ELSE}
+function TALImage.MakeBufBitmap: Tbitmap;
+{$ENDIF}
+
+{$IFDEF ALDPK}
+var aFileName: String;
+{$ENDIF}
+
+begin
+
+  if (Scene = nil) or
+     //--- don't do bufbitmap is size=0
+     (SameValue(Size.Size.cx, 0, TEpsilon.position)) or
+     (SameValue(Size.Size.cy, 0, TEpsilon.position)) or
+     //--- don't do bufbitmap if fResourceName is empty
+     (fResourceName = '')
+  then begin
+    clearBufBitmap;
+    exit(nil);
+  end;
+
+  if (fBufBitmap <> nil) and
+     (SameValue(fBufSize.cx, Size.Size.cx, TEpsilon.position)) and
+     (SameValue(fBufSize.cy, Size.Size.cy, TEpsilon.position)) then exit(fBufBitmap);
+
+  clearBufBitmap;
+  fBufSize := Size.Size;
+
+  {$IFDEF debug}
+  ALLog('TALImage.MakeBufBitmap', 'TALImage.MakeBufBitmap', TalLogType.verbose);
+  inc(AlDebugImageMakeBufBitmapCount);
+  AlDebugImageMakeBufBitmapStopWatch.Start;
+  try
+  {$endif}
+
+    {$IFDEF ALDPK}
+    aFileName := extractFilePath(getActiveProject.fileName) + 'resources\' + fResourceName; // by default all the resources files must be located in the sub-folder /resources/ of the project
+    if not TFile.Exists(aFileName) then begin
+      aFileName := aFileName + '.png';
+      if not TFile.Exists(aFileName) then aFileName := '';
+    end;
+    {$ENDIF}
+
+    case FWrapMode of
+
+      //Display the image with its original dimensions:
+      //* The image is placed in the upper-left corner of the rectangle of the control.
+      //* If the image is larger than the control's rectangle, then only the upper-left part of the image,
+      //  which fits in the rectangle of the control, is shown. The image is not resized.
+      TALImageWrapMode.Original:
+        begin
+          Result := nil; // todo
+        end;
+
+      //Best fit the image in the rectangle of the control:
+      //* If any dimension of the image is larger than the rectangle of the control, then scales down the image
+      //  (keeping image proportions – the ratio between the width and height) to fit the whole image in the rectangle
+      //  of the control. That is, either the width of the resized image is equal to the width of the control's rectangle
+      //  or the height of the resized image is equal to the height of the rectangle of the control. The whole image
+      //  should be displayed. The image is displayed centered in the rectangle of the control.
+      // * If the original image is smaller than the rectangle of the control, then the image is stretched to best fit in
+      //  the rectangle of the control. Whole the image should be displayed. The image is displayed centered in the rectangle of the control.
+      TALImageWrapMode.Fit:
+        begin
+          fBufBitmapRect := ALAlignDimensionToPixelRound(LocalRect, FScreenScale); // to have the pixel aligned width and height
+          {$IFDEF ALDPK}
+          if aFileName <> '' then fBufBitmap := ALLoadResizeAndFitFileImageV3(aFileName, fBufBitmapRect.Width * FScreenScale, fBufBitmapRect.Height * FScreenScale)
+          else fBufBitmap := nil;
+          {$ELSE}
+          fBufBitmap := ALLoadResizeAndFitResourceImageV3(fResourceName, fBufBitmapRect.Width * FScreenScale, fBufBitmapRect.Height * FScreenScale);
+          {$ENDIF}
+          result := fBufBitmap;
+          if result <> nil then fBufBitmapRect := TrectF.Create(0,0, result.Width/FScreenScale, result.Height/FScreenScale).
+                                                    CenterAt(fBufBitmapRect);
+        end;
+
+      //Stretch the image to fill the entire rectangle of the control.
+      TALImageWrapMode.Stretch:
+        begin
+          Result := nil; // todo
+        end;
+
+      //Tile (multiply) the image to cover the entire rectangle of the control:
+      //* If the image is larger than the rectangle of the control, then only the
+      //  upper-left part of the image, which fits in the rectangle of the control, is shown. The image is not resized.
+      //* If the image (original size) is smaller than the rectangle of the control, then the multiple images are tiled
+      //  (placed one next to another) to fill the entire rectangle of the control. The images are placed beginning from
+      //  the upper-left corner of the rectangle of the control.
+      TALImageWrapMode.Tile:
+        begin
+          Result := nil; // todo
+        end;
+
+      //Center the image to the rectangle of the control:
+      //* The image is always displayed at its original size (regardless whether the rectangle of the control is larger or smaller than the image size).
+      TALImageWrapMode.Center:
+        begin
+          Result := nil; // todo
+        end;
+
+      //Fit the image in the rectangle of the control:
+      //* If any dimension of the image is larger than the rectangle of the control, then scales down the image (keeping image proportions--the ratio between the width and height)
+      //  to fit the whole image in the rectangle of the control. That is, either the width of the resized image is equal to the width of the control's rectangle or the height of the
+      //  resized image is equal to the height of the control's rectangle. Whole the image should be displayed. The image is displayed centered in the rectangle of the control.
+      //* If the original image is smaller than the rectangle of the control, then the image is not resized. The image is displayed centered in the rectangle of the control.
+      TALImageWrapMode.Place:
+        begin
+          Result := nil; // todo
+        end;
+
+      //Best fit the image in the rectangle of the control:
+      //* If any dimension of the image is larger than the rectangle of the control, then scales down the image
+      //  (keeping image proportions – the ratio between the width and height) to fit the height or the width of the image in the rectangle
+      //  of the control and crop the extra part of the image. That is, the width of the resized image is equal to the width of the control's rectangle
+      //  AND the height of the resized image is equal to the height of the rectangle of the control.
+      // * If the original image is smaller than the rectangle of the control, then the image is stretched to best fit in
+      //  the rectangle of the control. Whole the image should be displayed.
+      TALImageWrapMode.FitAndCrop:
+        begin
+          fBufBitmapRect := ALAlignDimensionToPixelRound(LocalRect, FScreenScale); // to have the pixel aligned width and height
+          {$IFDEF ALDPK}
+          if aFileName <> '' then fBufBitmap := ALLoadResizeAndCropFileImageV3(aFileName, fBufBitmapRect.Width * FScreenScale, fBufBitmapRect.Height * FScreenScale)
+          else fBufBitmap := nil;
+          {$ELSE}
+          fBufBitmap := ALLoadResizeAndCropResourceImageV3(fResourceName, fBufBitmapRect.Width * FScreenScale, fBufBitmapRect.Height * FScreenScale);
+          {$ENDIF}
+          result := fBufBitmap;
+          if result <> nil then fBufBitmapRect := TrectF.Create(0,0, result.Width/FScreenScale, result.Height/FScreenScale).
+                                                    CenterAt(fBufBitmapRect);
+        end;
+
+      //to hide a stupid warning else
+      else Result := nil;
+
+    end;
+
+  {$IFDEF debug}
+  finally
+    AlDebugImageMakeBufBitmapStopWatch.Stop;
+  end;
+  {$endif}
+
+end;
+
+{***********************}
+procedure TALImage.Paint;
+var R: TRectF;
+begin
+
+  if (csDesigning in ComponentState) and not Locked and not FInPaintTo then
+  begin
+    R := LocalRect;
+    InflateRect(R, -0.5, -0.5);
+    Canvas.DrawDashRect(R, 0, 0, AllCorners, AbsoluteOpacity, $A0909090);
+  end;
+
+  MakeBufBitmap;
+
+  if fBufBitmap = nil then begin
+    inherited paint;
+    exit;
+  end;
+
+  {$IF DEFINED(IOS) or DEFINED(ANDROID)}
+
+  TCustomCanvasGpu(Canvas).DrawTexture(canvas.AlignToPixel(fBufBitmapRect), // ATexRect (destRec)
+                                       TRectF.Create(0, 0, fBufBitmap.Width, fBufBitmap.Height), // ARect (srcRec)
+                                       ALPrepareColor(TCustomCanvasGpu.ModulateColor, AbsoluteOpacity), // https://quality.embarcadero.com/browse/RSP-15432
+                                       fBufBitmap);
+
+  {$ELSE}
+
+  canvas.DrawBitmap(fBufBitmap,
+                    TRectF.Create(0, 0, fBufBitmap.Width, fBufBitmap.Height), {SrcRect}
+                    canvas.AlignToPixel(fBufBitmapRect), {DestRect}
+                    AbsoluteOpacity, {opacity}
+                    true{highSpeed});
+
+  {$ENDIF}
+
+end;
+
+{************************************}
+{$IF DEFINED(IOS) or DEFINED(ANDROID)}
+procedure TALImage.OpenGLContextLostHandler(const Sender: TObject; const Msg: TMessage);
+begin
+  clearBufBitmap;
+end;
+{$ENDIF}
+
+{************************************}
+{$IF DEFINED(IOS) or DEFINED(ANDROID)}
+procedure TALImage.OpenGLContextResetHandler(const Sender: TObject; const Msg: TMessage);
+begin
+  clearBufBitmap;
+end;
+{$ENDIF}
+
+{************************************************************}
+procedure TalImage.SetWrapMode(const Value: TALImageWrapMode);
+begin
+  if FWrapMode <> Value then begin
+    clearBufBitmap;
+    FWrapMode := Value;
+    Repaint;
+  end;
+end;
+
+{******************************************************}
+procedure TalImage.setResourceName(const Value: String);
+begin
+  if FResourceName <> Value then begin
+    clearBufBitmap;
+    FResourceName := Value;
+    Repaint;
+  end;
+end;
 
 {**************************************************}
 constructor TALRectangle.Create(AOwner: TComponent);
 var aScreenSrv: IFMXScreenService;
 begin
-  inherited;
+  inherited Create(AOwner);
   if TPlatformServices.Current.SupportsPlatformService(IFMXScreenService, aScreenSrv) then FScreenScale := aScreenSrv.GetScreenScale
   else FScreenScale := 1;
   fdoubleBuffered := true;
   fBufBitmap := nil;
+  fShadow := TalShadow.Create;
+  fShadow.OnChanged := ShadowChanged;
+  {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+  fShadowEffect := nil;
+  {$ENDIF}
   {$IF defined(ANDROID) or defined(IOS)}
   FOpenGLContextLostId := TMessageManager.DefaultManager.SubscribeToMessage(TContextLostMessage, OpenGLContextLostHandler);
   FOpenGLContextResetId := TMessageManager.DefaultManager.SubscribeToMessage(TContextResetMessage, OpenGLContextResetHandler);
@@ -403,6 +872,10 @@ end;
 destructor TALRectangle.Destroy;
 begin
   clearBufBitmap;
+  alFreeAndNil(fShadow);
+  {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+  AlFreeAndNil(fShadowEffect);
+  {$ENDIF}
   {$IF defined(ANDROID) or defined(IOS)}
   TMessageManager.DefaultManager.Unsubscribe(TContextLostMessage, FOpenGLContextLostId);
   TMessageManager.DefaultManager.Unsubscribe(TContextResetMessage, FOpenGLContextResetId);
@@ -430,6 +903,34 @@ begin
   inherited;
 end;
 
+{****************************************************}
+procedure TALRectangle.ShadowChanged(Sender: TObject);
+begin
+  clearBufBitmap;
+  {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+  if shadow.enabled then begin
+    if not assigned(fShadowEffect) then begin
+      fShadowEffect := TshadowEffect.Create(self);
+      fShadowEffect.Parent := self;
+      fShadowEffect.SetSubComponent(true);
+      fShadowEffect.stored := False;
+    end;
+    fShadowEffect.ShadowColor := shadow.ShadowColor;
+    fShadowEffect.distance := 0; // Specifies the distance between the shadow and the visual object to which TShadowEffect is applied.
+                                 // i m too lazy to calculate this from fShadow.offsetX / fShadow.offsetY - if someone want to do it
+    fShadowEffect.Direction := 0;  // Specifies the direction (in degrees) of the shadow.
+                                   // i m too lazy to calculate this from fShadow.offsetX / fShadow.offsetY - if someone want to do it
+    fShadowEffect.Opacity := 1; // Opacity is a System.Single value that takes values in the range from 0 through 1.
+                                // we use the opacity of the color instead
+    fShadowEffect.softness := fShadow.blur / 24; // Specifies the amount of blur applied to the shadow.
+                                                 // Softness is a System.Single value that takes values in the range from 0 through 9.
+                                                 // i calculate approximatly that 0.5 = around 12 for blur
+  end
+  else AlFreeAndNil(fShadowEffect);
+  {$ENDIF}
+  if FUpdating = 0 then Repaint;
+end;
+
 {************************************}
 {$IF DEFINED(IOS) or DEFINED(ANDROID)}
 function TALRectangle.MakeBufBitmap: TTexture;
@@ -437,437 +938,19 @@ function TALRectangle.MakeBufBitmap: TTexture;
 function TALRectangle.MakeBufBitmap: Tbitmap;
 {$ENDIF}
 
-{$IF defined(IOS)}
-const aDefaultInputRange: array[0..1] of CGFloat = (0, 1);
-{$ENDIF}
-
-{$IF defined(ANDROID)}
-var aBitmap: Jbitmap;
-    aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
-    aShader: JRadialGradient;
-    aCanvas: Jcanvas;
-    aPaint: JPaint;
+var aSaveStrokeThickness: single;
+    aSaveShadowOffsetX: single;
+    aSaveShadowOffsetY: single;
+    aSaveShadowBlur: single;
     aRect: TRectf;
-    aColors: TJavaArray<Integer>;
-    aStops: TJavaArray<Single>;
-    aPorterDuffXfermode: jPorterDuffXfermode;
-    aBitmapInfo: AndroidBitmapInfo;
-    aPixelBuffer: Pointer;
-    aBitmapData: TBitmapData;
-    aJDestRectf: JrectF;
-    aJSrcRect: Jrect;
-    i: integer;
-{$ELSEIF defined(IOS)}
-var aBitmapSurface: TbitmapSurface;
+    {$IF defined(ANDROID)}
+    aBitmap: Jbitmap;
+    aCanvas: Jcanvas;
+    {$ELSEIF defined(IOS)}
+    aBitmapSurface: TbitmapSurface;
     aColorSpace: CGColorSpaceRef;
     aContext: CGContextRef;
-    aAlphaColor: TAlphaColorCGFloat;
-    aCallback: CGFunctionCallbacks;
-    aShading: CGShadingRef;
-    aFunc: CGFunctionRef;
-    aRect: TRectf;
-    aBitmapData: TBitmapData;
-    aTMPContext: CGContextRef;
-    aImageRef: CGImageRef;
-    aImage: UIImage;
-{$ENDIF}
-
-  {$IF defined(ANDROID)}
-  procedure _drawRect(Const aDrawOnlyBorder: Boolean);
-  var aJRect: JRectF;
-      aPath: JPath;
-      aXRadius: single;
-      aYradius: Single;
-      aWidthMinusCorners: single;
-      aHeightMinusCorners: Single;
-      aCorners: TCorners;
-      aHalfStrokeWidth: Single;
-  begin
-
-    // use drawRoundRect
-    if ((compareValue(xRadius, 0, TEpsilon.position) > 0) and
-        (compareValue(YRadius, 0, TEpsilon.position) > 0)) and
-       (corners=[TCorner.TopLeft, TCorner.TopRight, TCorner.BottomLeft, TCorner.BottomRight]) and
-       (sides=[TSide.Top, TSide.Left, TSide.Bottom, TSide.Right]) then begin
-      //-----
-      aJRect := TJRectf.JavaClass.init(aRect.left, aRect.top, aRect.right, aRect.bottom);
-      aCanvas.drawRoundRect(aJRect{rect},
-                            xRadius * FScreenScale {rx},
-                            yRadius * FScreenScale {ry},
-                            apaint);
-      aJRect := nil;
-      //-----
-    end
-
-    // use drawRect
-    else if ((compareValue(xRadius, 0, TEpsilon.position) = 0) or
-             (compareValue(YRadius, 0, TEpsilon.position) = 0) or
-             (corners=[])) and
-            (sides=[TSide.Top, TSide.Left, TSide.Bottom, TSide.Right]) then begin
-      //-----
-      aCanvas.drawRect(aRect.left{left},
-                       aRect.top{top},
-                       aRect.right{right},
-                       aRect.bottom{bottom},
-                       apaint);
-      //-----
-    end
-
-    // use drawPath
-    else begin
-
-      aPath := TJPath.Create;
-      //----
-      aXRadius := xRadius * FScreenScale;
-      aYradius := yRadius * FScreenScale;
-      if (aXRadius > aRect.width / 2) then aXRadius := aRect.width / 2;
-      if (aYradius > aRect.height / 2) then aYradius := aRect.height / 2;
-      //----
-      if (compareValue(aXRadius, 0, TEpsilon.position) > 0) and
-         (compareValue(aYRadius, 0, TEpsilon.position) > 0) then aCorners := corners
-      else aCorners := [];
-      //----
-      aWidthMinusCorners := (aRect.width - (2 * aXRadius));
-      aHeightMinusCorners := (aRect.height - (2 * aYradius));
-      //----
-      if (Stroke.Kind <> TBrushKind.None) then aHalfStrokeWidth := (Stroke.Thickness * FScreenScale) / 2
-      else aHalfStrokeWidth := 0;
-
-
-      //----- TopRight
-      if (TCorner.TopRight in aCorners) then begin
-        aPath.moveTo(aRect.right, aRect.top + aYradius);
-        aPath.rQuadTo(0, -aYradius, -aXRadius, -aYradius);
-        if not aDrawOnlyBorder then aPath.rlineTo(0, -aHalfStrokeWidth);
-      end
-      else begin
-        if not aDrawOnlyBorder then aPath.moveTo(aRect.right + aHalfStrokeWidth, aRect.top + aYradius)
-        else aPath.moveTo(aRect.right, aRect.top + aYradius);
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.right in sides) then begin
-           aPath.rLineTo(0, -aYradius -aHalfStrokeWidth);
-           if aDrawOnlyBorder then aPath.rMoveTo(0, aHalfStrokeWidth);
-        end
-        else aPath.rMoveTo(0, -aYradius); // aDrawOnlyBorder AND not TSide.right
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.top in sides) then begin
-          if not aDrawOnlyBorder then aPath.rLineTo(-aXRadius -aHalfStrokeWidth,0)
-          else begin
-            aPath.rMoveTo(+aHalfStrokeWidth,0);
-            aPath.rLineTo(-aXRadius -aHalfStrokeWidth,0);
-          end;
-        end
-        else aPath.rMoveTo(-aXRadius,0); // aDrawOnlyBorder AND not TSide.top
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.Top in sides) then aPath.rLineTo(-awidthMinusCorners, 0)
-      else aPath.rMoveTo(-awidthMinusCorners, 0);
-
-      //----- TopLeft
-      if (TCorner.TopLeft in aCorners) then begin
-        if not aDrawOnlyBorder then aPath.rlineTo(0, +aHalfStrokeWidth);
-        aPath.rQuadTo(-aXRadius, 0, -aXRadius, aYradius);
-        if not aDrawOnlyBorder then aPath.rlineTo(-aHalfStrokeWidth, 0);
-      end
-      else begin
-        if (not aDrawOnlyBorder) or
-           (TSide.top in sides) then begin
-          aPath.rLineTo(-aXRadius -aHalfStrokeWidth, 0);
-          if aDrawOnlyBorder then aPath.rMoveTo(aHalfStrokeWidth, 0);
-        end
-        else aPath.rMoveTo(-aXRadius, 0); // aDrawOnlyBorder AND not TSide.top
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.left in sides) then begin
-          if not aDrawOnlyBorder then aPath.rLineTo(0,aYradius +aHalfStrokeWidth)
-          else begin
-            aPath.rMoveTo(0,-aHalfStrokeWidth);
-            aPath.rLineTo(0,+aYradius +aHalfStrokeWidth);
-          end;
-        end
-        else aPath.rMoveTo(0,aYradius); // aDrawOnlyBorder AND not TSide.left
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.left in sides) then aPath.rLineTo(0, aheightMinusCorners)
-      else aPath.rMoveTo(0, aheightMinusCorners);
-
-      //----- BottomLeft
-      if (TCorner.BottomLeft in aCorners) then begin
-        if not aDrawOnlyBorder then aPath.rlineTo(aHalfStrokeWidth, 0);
-        aPath.rQuadTo(0, aYradius, aXRadius, aYradius);
-        if not aDrawOnlyBorder then aPath.rlineTo(0, aHalfStrokeWidth);
-      end
-      else begin
-        if (not aDrawOnlyBorder) or
-           (TSide.left in sides) then begin
-          aPath.rLineTo(0, aYradius +aHalfStrokeWidth);
-          if aDrawOnlyBorder then aPath.rMoveTo(0, -aHalfStrokeWidth);
-        end
-        else aPath.rMoveTo(0, aYradius); // aDrawOnlyBorder AND not TSide.left
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.bottom in sides) then begin
-          if not aDrawOnlyBorder then aPath.rLineTo(aXRadius +aHalfStrokeWidth,0)
-          else begin
-            aPath.rMoveTo(-aHalfStrokeWidth,0);
-            aPath.rLineTo(+aXRadius +aHalfStrokeWidth,0);
-          end;
-        end
-        else aPath.rMoveTo(aXRadius,0); // aDrawOnlyBorder AND not TSide.bottom
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.bottom in sides) then aPath.rLineTo(awidthMinusCorners, 0)
-      else aPath.rMoveTo(awidthMinusCorners, 0);
-
-      //----- BottomRight
-      if (TCorner.BottomRight in aCorners) then begin
-        if not aDrawOnlyBorder then aPath.rlineTo(0, -aHalfStrokeWidth);
-        aPath.rQuadTo(aXRadius, 0, aXRadius, -aYradius);
-        if not aDrawOnlyBorder then aPath.rlineTo(aHalfStrokeWidth, 0);
-      end
-      else begin
-        if (not aDrawOnlyBorder) or
-           (TSide.bottom in sides) then begin
-          aPath.rLineTo(aXRadius +aHalfStrokeWidth,0);
-          if aDrawOnlyBorder then aPath.rMoveTo(-aHalfStrokeWidth, 0);
-        end
-        else aPath.rMoveTo(aXRadius,0); // aDrawOnlyBorder AND not TSide.bottom
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.right in sides) then begin
-          if not aDrawOnlyBorder then aPath.rLineTo(0, -aYradius -aHalfStrokeWidth)
-          else begin
-            aPath.rMoveTo(0,+aHalfStrokeWidth);
-            aPath.rLineTo(0,-aYradius -aHalfStrokeWidth);
-          end;
-        end
-        else aPath.rMoveTo(0, -aYradius); // aDrawOnlyBorder AND not TSide.right
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.right in sides) then aPath.rLineTo(0, -aheightMinusCorners)
-      else aPath.rMoveTo(0, -aheightMinusCorners);
-
-      //-----
-      aCanvas.drawPath(apath,aPaint);
-      aPath := nil;
-
-    end;
-  end;
-  {$ENDIF}
-
-  {$IF defined(IOS)}
-  procedure _DrawPath(Const aDrawOnlyBorder: Boolean);
-  var aXRadius: single;
-      aYradius: Single;
-      aWidthMinusCorners: single;
-      aHeightMinusCorners: Single;
-      aCorners: TCorners;
-      aHalfStrokeWidth: Single;
-      aCurPoint: TpointF;
-
-    {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-    procedure _moveTo(x: Single; y: Single);
-    begin
-      CGContextMoveToPoint(aContext, X, aBitmapSurface.Height - Y);
-      aCurPoint.X := x;
-      aCurPoint.Y := Y;
-    end;
-
-    {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-    procedure _rQuadTo(dx1: Single; dy1: Single; dx2: Single; dy2: Single);
-    begin
-      CGContextAddQuadCurveToPoint(aContext,
-                                   aCurPoint.X + dx1{cpx},
-                                   aBitmapSurface.Height - (aCurPoint.Y + dy1){cpy},
-                                   aCurPoint.X + dx2{x},
-                                   aBitmapSurface.Height - (aCurPoint.Y + dy2){y});
-      aCurPoint.X := aCurPoint.X + dx2;
-      aCurPoint.Y := aCurPoint.Y + dy2;
-    end;
-
-    {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-    procedure _rLineTo(dx: Single; dy: Single);
-    begin
-      CGContextAddLineToPoint(aContext, aCurPoint.X + dx{x}, aBitmapSurface.Height - (aCurPoint.Y + dy{y}));
-      aCurPoint.X := aCurPoint.X + dx;
-      aCurPoint.Y := aCurPoint.Y + dy;
-    end;
-
-    {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-    procedure _rMoveTo(dx: Single; dy: Single);
-    begin
-      CGContextMoveToPoint(aContext, aCurPoint.X + dx{x}, aBitmapSurface.Height - (aCurPoint.Y + dy{y}));
-      aCurPoint.X := aCurPoint.X + dx;
-      aCurPoint.Y := aCurPoint.Y + dy;
-    end;
-
-  begin
-
-    // Creates a new empty path in a graphics context.
-    CGContextBeginPath(aContext);
-
-    // use drawRect
-    if ((compareValue(xRadius, 0, TEpsilon.position) = 0) or
-        (compareValue(YRadius, 0, TEpsilon.position) = 0) or
-        (corners=[])) and
-       (sides=[TSide.Top, TSide.Left, TSide.Bottom, TSide.Right]) then begin
-     //-----
-     CGContextAddRect(aContext, ALLowerLeftCGRect(aRect.TopLeft,
-                                                  aRect.Width,
-                                                  aRect.Height,
-                                                  aBitmapSurface.Height));
-     //-----
-    end
-
-    // use drawPath
-    else begin
-
-      aXRadius := xRadius * FScreenScale;
-      aYradius := yRadius * FScreenScale;
-      if (aXRadius > aRect.width / 2) then aXRadius := aRect.width / 2;
-      if (aYradius > aRect.height / 2) then aYradius := aRect.height / 2;
-      //----
-      if (compareValue(aXRadius, 0, TEpsilon.position) > 0) and
-         (compareValue(aYRadius, 0, TEpsilon.position) > 0) then aCorners := corners
-      else aCorners := [];
-      //----
-      aWidthMinusCorners := (aRect.width - (2 * aXRadius));
-      aHeightMinusCorners := (aRect.height - (2 * aYradius));
-      //----
-      if (Stroke.Kind <> TBrushKind.None) then aHalfStrokeWidth := (Stroke.Thickness * FScreenScale) / 2
-      else aHalfStrokeWidth := 0;
-
-
-      //----- TopRight
-      if (TCorner.TopRight in aCorners) then begin
-        _moveTo(aRect.right, aRect.top + aYradius);
-        _rQuadTo(0, -aYradius, -aXRadius, -aYradius);
-        if not aDrawOnlyBorder then _rlineTo(0, -aHalfStrokeWidth);
-      end
-      else begin
-        if not aDrawOnlyBorder then _moveTo(aRect.right + aHalfStrokeWidth, aRect.top + aYradius)
-        else _moveTo(aRect.right, aRect.top + aYradius);
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.right in sides) then begin
-           _rLineTo(0, -aYradius -aHalfStrokeWidth);
-           if aDrawOnlyBorder then _rMoveTo(0, aHalfStrokeWidth);
-        end
-        else _rMoveTo(0, -aYradius); // aDrawOnlyBorder AND not TSide.right
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.top in sides) then begin
-          if not aDrawOnlyBorder then _rLineTo(-aXRadius -aHalfStrokeWidth,0)
-          else begin
-            _rMoveTo(+aHalfStrokeWidth,0);
-            _rLineTo(-aXRadius -aHalfStrokeWidth,0);
-          end;
-        end
-        else _rMoveTo(-aXRadius,0); // aDrawOnlyBorder AND not TSide.top
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.Top in sides) then _rLineTo(-awidthMinusCorners, 0)
-      else _rMoveTo(-awidthMinusCorners, 0);
-
-      //----- TopLeft
-      if (TCorner.TopLeft in aCorners) then begin
-        if not aDrawOnlyBorder then _rlineTo(0, +aHalfStrokeWidth);
-        _rQuadTo(-aXRadius, 0, -aXRadius, aYradius);
-        if not aDrawOnlyBorder then _rlineTo(-aHalfStrokeWidth, 0);
-      end
-      else begin
-        if (not aDrawOnlyBorder) or
-           (TSide.top in sides) then begin
-          _rLineTo(-aXRadius -aHalfStrokeWidth, 0);
-          if aDrawOnlyBorder then _rMoveTo(aHalfStrokeWidth, 0);
-        end
-        else _rMoveTo(-aXRadius, 0); // aDrawOnlyBorder AND not TSide.top
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.left in sides) then begin
-          if not aDrawOnlyBorder then _rLineTo(0,aYradius +aHalfStrokeWidth)
-          else begin
-            _rMoveTo(0,-aHalfStrokeWidth);
-            _rLineTo(0,+aYradius +aHalfStrokeWidth);
-          end;
-        end
-        else _rMoveTo(0,aYradius); // aDrawOnlyBorder AND not TSide.left
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.left in sides) then _rLineTo(0, aheightMinusCorners)
-      else _rMoveTo(0, aheightMinusCorners);
-
-      //----- BottomLeft
-      if (TCorner.BottomLeft in aCorners) then begin
-        if not aDrawOnlyBorder then _rlineTo(aHalfStrokeWidth, 0);
-        _rQuadTo(0, aYradius, aXRadius, aYradius);
-        if not aDrawOnlyBorder then _rlineTo(0, aHalfStrokeWidth);
-      end
-      else begin
-        if (not aDrawOnlyBorder) or
-           (TSide.left in sides) then begin
-          _rLineTo(0, aYradius +aHalfStrokeWidth);
-          if aDrawOnlyBorder then _rMoveTo(0, -aHalfStrokeWidth);
-        end
-        else _rMoveTo(0, aYradius); // aDrawOnlyBorder AND not TSide.left
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.bottom in sides) then begin
-          if not aDrawOnlyBorder then _rLineTo(aXRadius +aHalfStrokeWidth,0)
-          else begin
-            _rMoveTo(-aHalfStrokeWidth,0);
-            _rLineTo(+aXRadius +aHalfStrokeWidth,0);
-          end;
-        end
-        else _rMoveTo(aXRadius,0); // aDrawOnlyBorder AND not TSide.bottom
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.bottom in sides) then _rLineTo(awidthMinusCorners, 0)
-      else _rMoveTo(awidthMinusCorners, 0);
-
-      //----- BottomRight
-      if (TCorner.BottomRight in aCorners) then begin
-        if not aDrawOnlyBorder then _rlineTo(0, -aHalfStrokeWidth);
-        _rQuadTo(aXRadius, 0, aXRadius, -aYradius);
-        if not aDrawOnlyBorder then _rlineTo(aHalfStrokeWidth, 0);
-      end
-      else begin
-        if (not aDrawOnlyBorder) or
-           (TSide.bottom in sides) then begin
-          _rLineTo(aXRadius +aHalfStrokeWidth,0);
-          if aDrawOnlyBorder then _rMoveTo(-aHalfStrokeWidth, 0);
-        end
-        else _rMoveTo(aXRadius,0); // aDrawOnlyBorder AND not TSide.bottom
-        //----
-        if (not aDrawOnlyBorder) or
-           (TSide.right in sides) then begin
-          if not aDrawOnlyBorder then _rLineTo(0, -aYradius -aHalfStrokeWidth)
-          else begin
-            _rMoveTo(0,+aHalfStrokeWidth);
-            _rLineTo(0,-aYradius -aHalfStrokeWidth);
-          end;
-        end
-        else _rMoveTo(0, -aYradius); // aDrawOnlyBorder AND not TSide.right
-      end;
-      //-----
-      if (not aDrawOnlyBorder) or
-         (TSide.right in sides) then _rLineTo(0, -aheightMinusCorners)
-      else _rMoveTo(0, -aheightMinusCorners);
-
-    end;
-
-  end;
-  {$ENDIF}
+    {$ENDIF}
 
 begin
 
@@ -884,6 +967,8 @@ begin
       ((SameValue(xRadius, 0, TEpsilon.position)) or
        (SameValue(yRadius, 0, TEpsilon.position)) or
        (corners=[]))
+      and
+      (not fShadow.enabled)
       and
       (Fill.Kind in [TBrushKind.None, TBrushKind.Solid]))
   then begin
@@ -905,374 +990,97 @@ begin
   try
   {$endif}
 
-  {$IFDEF ANDROID}
-
   //init fBufBitmapRect / aRect
   fBufBitmapRect := ALAlignDimensionToPixelRound(LocalRect, FScreenScale); // to have the pixel aligned width and height
   aRect := TrectF.Create(0,0,round(fBufBitmapRect.Width * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
-
-  //create the main bitmap on with we will draw
-  aBitmap := TJBitmap.JavaClass.createBitmap(round(aRect.Width),
-                                             round(aRect.Height),
-                                             TJBitmap_Config.JavaClass.ARGB_8888);
-  try
-
-    //create the canvas and the paint
-    aCanvas := TJCanvas.JavaClass.init(aBitmap);
-    aPaint := TJPaint.JavaClass.init;
-    aPaint.setAntiAlias(true); // Enabling this flag will cause all draw operations that support antialiasing to use it.
-    aPaint.setFilterBitmap(True); // enable bilinear sampling on scaled bitmaps. If cleared, scaled bitmaps will be drawn with nearest neighbor sampling, likely resulting in artifacts.
-    apaint.setDither(true); // Enabling this flag applies a dither to any blit operation where the target's colour space is more constrained than the source.
-
-    //init aRect
-    if Stroke.Kind <> TBrushKind.None then aRect.Inflate((-(Stroke.Thickness * FScreenScale) / 2), (-(Stroke.Thickness * FScreenScale) / 2)); // http://stackoverflow.com/questions/17038017/ios-draw-filled-circles
-
-    //fill the rectangle
-    if Fill.Kind <> TBrushKind.None then begin
-
-      //init aPaint
-      aPaint.setStyle(TJPaint_Style.JavaClass.FILL); // FILL_AND_STROCK it's absolutely useless, because it's will fill on the full aRect + Stroke.Thickness :( this result&ing in border if the fill is for exemple black and border white
-
-      //fill with gradient
-      if Fill.Kind = TBrushKind.Gradient then begin
-        if Fill.Gradient.Style = TGradientStyle.Radial then begin
-          aColors := TJavaArray<Integer>.Create(Fill.Gradient.Points.Count);
-          aStops := TJavaArray<Single>.Create(Fill.Gradient.Points.Count);
-          for i := 0 to Fill.Gradient.Points.Count - 1 do begin
-            aColors[Fill.Gradient.Points.Count - 1 - i] := integer(Fill.Gradient.Points[i].Color);
-            aStops[Fill.Gradient.Points.Count - 1 - i] := 1 - Fill.Gradient.Points[i].Offset;
-          end;
-          aShader := TJRadialGradient.JavaClass.init(aRect.CenterPoint.x{x}, aRect.CenterPoint.y{y}, aRect.width / 2{radius},  aColors, aStops, TJShader_TileMode.JavaClass.CLAMP{tile});
-          aPaint.setShader(aShader);
-          _drawRect(false{aDrawOnlyBorder});
-          aPaint.setShader(nil);
-          aShader := nil;
-          ALfreeandNil(aColors);
-          ALfreeandNil(aStops);
-        end;
-      end
-
-      //fill with bitmap
-      else if Fill.Kind = TBrushKind.Bitmap then begin
-        if not fill.Bitmap.Bitmap.IsEmpty then begin
-          if fill.Bitmap.WrapMode = TWrapMode.TileStretch then begin
-            //-----
-            aTmpBitmap := TJBitmap.JavaClass.createBitmap(fill.Bitmap.Bitmap.Width, fill.Bitmap.Bitmap.height, TJBitmap_Config.JavaClass.ARGB_8888);
-            //-----
-            FillChar(aBitmapInfo, SizeOf(aBitmapInfo), 0);
-            if (AndroidBitmap_getInfo(TJNIResolver.GetJNIEnv, (aTmpBitmap as ILocalObject).GetObjectID, @aBitmapInfo) = 0) and
-               (AndroidBitmap_lockPixels(TJNIResolver.GetJNIEnv, (aTmpBitmap as ILocalObject).GetObjectID, @aPixelBuffer) = 0) then
-            try
-              if fill.Bitmap.Bitmap.Map(TMapAccess.Read, aBitmapData) then
-              try
-                System.Move(aBitmapData.Data^, aPixelBuffer^, aBitmapData.Pitch * aBitmapData.Height);
-              finally
-                fill.Bitmap.Bitmap.Unmap(aBitmapData);
-              end;
-            finally
-              AndroidBitmap_unlockPixels(TJNIResolver.GetJNIEnv, (aTmpBitmap as ILocalObject).GetObjectID);
-            end;
-            //-----
-            _drawRect(false{aDrawOnlyBorder});
-            aPorterDuffXfermode := TJPorterDuffXfermode.JavaClass.init(TJPorterDuff_Mode.JavaClass.SRC_IN);
-            aJDestRectf := TJRectf.JavaClass.init(aRect.left, aRect.top, aRect.right, aRect.bottom);
-            aJSrcRect := TJRect.JavaClass.init(0, 0, fill.Bitmap.Bitmap.Width, fill.Bitmap.Bitmap.height);
-            aPaint.setXfermode(aPorterDuffXfermode);
-            aCanvas.drawBitmap(aTMPBitmap, aJSrcRect, aJDestRectf, apaint);
-            aPaint.setXfermode(nil);
-            aPorterDuffXfermode := nil;
-            aJSrcRect := nil;
-            aJDestRectf := nil;
-            //-----
-            aTmpBitmap.recycle;
-            aTmpBitmap := nil;
-            //-----
-          end;
-        end;
-      end
-
-      //fill with solid color
-      else if Fill.Kind = TBrushKind.Solid then begin
-        aPaint.setColor(Fill.Color);
-        _drawRect(false{aDrawOnlyBorder});
-      end;
-
-    end;
-
-    //stroke the rectangle
-    if Stroke.Kind <> TBrushKind.None then begin
-
-      //init aPaint
-      aPaint.setStyle(TJPaint_Style.JavaClass.STROKE);
-      aPaint.setStrokeWidth(Stroke.Thickness * FScreenScale);
-
-      //stroke with solid color
-      if Stroke.Kind = TBrushKind.Solid then begin
-        aPaint.setColor(Stroke.Color);
-        _drawRect(true{aDrawOnlyBorder});
-      end;
-
-    end;
-
-    //free the paint and the canvas
-    aPaint := nil;
-    aCanvas := nil;
-
-    //init the bitmapSurface that we will use to convert the jbitmap
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the JBitmapToSurface to the bitmapSurface
-      if JBitmapToSurface(aBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        fBufBitmap := TALTexture.Create(True{aVolatile});
-        try
-          fBufBitmap.Assign(aBitmapSurface);
-        except
-          ALFreeAndNil(fBufBitmap);
-          raise;
-        end;
-
-      end
-      else fBufBitmap := nil;
-
-    finally
-      ALFreeAndNil(abitmapSurface);
-    end;
-
-  finally
-    aBitmap.recycle;
-    aBitmap := nil;
+  if Shadow.enabled then begin
+    fBufBitmapRect.Inflate(Shadow.blur, Shadow.blur); // add the extra space needed to draw the shadow
+    fBufBitmapRect := ALAlignDimensionToPixelRound(fBufBitmapRect, FScreenScale); // to have the pixel aligned width and height
+    aRect.Offset(Shadow.blur * FScreenScale, Shadow.blur * FScreenScale);
   end;
 
-  {$ELSEIF DEFINED(IOS)}
-
-  //init fBufBitmapRect / aRect
-  fBufBitmapRect := ALAlignDimensionToPixelRound(LocalRect, FScreenScale); // to have the pixel aligned width and height
-  aRect := TrectF.Create(0,0,round(fBufBitmapRect.Width * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
-
-  //create the bitmapSurface
-  aBitmapSurface := TbitmapSurface.Create;
+  //translate Stroke.Thickness from virtual to real pixel
+  Stroke.OnChanged := Nil;
+  aSaveStrokeThickness := Stroke.Thickness;
+  Stroke.Thickness := Stroke.Thickness * fScreenScale;
+  //-----
+  Shadow.OnChanged := nil;
+  aSaveShadowOffsetX := Shadow.OffsetX;
+  aSaveShadowOffsetY := Shadow.OffsetY;
+  aSaveShadowBlur := Shadow.Blur;
+  Shadow.OffsetX := Shadow.OffsetX * fScreenScale;
+  Shadow.OffsetY := Shadow.OffsetY * fScreenScale;
+  Shadow.Blur := Shadow.Blur * fScreenScale;
   try
 
-    //init aBitmapSurface
-    aBitmapSurface.SetSize(round(aRect.Width),
-                           round(aRect.Height));
+    {$IFDEF ANDROID}
 
-    //init the color space
-    aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
-    if aColorSpace = nil then exit(nil);         // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
+    //create the drawing surface
+    ALCreateDrawingSurface(aBitmap, // Var aBitmap: Jbitmap;
+                           aCanvas, // var aCanvas: Jcanvas;
+                           round(fBufBitmapRect.Width * FScreenScale), // const w: integer;
+                           round(fBufBitmapRect.height * FScreenScale));// const h: integer)
     try
 
-      //create the context
-      aContext := CGBitmapContextCreate(aBitmapSurface.Bits, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
-                                                             //       memory block should be at least (bytesPerRow*height) bytes.
-                                                             //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
-                                                             //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
-                                        aBitmapSurface.Width, // width: The width, in pixels, of the required bitmap.
-                                        aBitmapSurface.Height, // height: The height, in pixels, of the required bitmap.
-                                        8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
-                                           //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
-                                           //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
-                                           //                   chapter of Quartz 2D Programming Guide.
-                                        aBitmapSurface.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
-                                                              //              a value of 0 causes the value to be calculated automatically.
-                                        aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
-                                                     //             bitmap graphics contexts.
-                                        kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
-                                                                          // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
-                                                                          // kCGImageAlphaPremultipliedNone =  For example, RGB
-                                        kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
-                                                                  // kCGBitmapByteOrder32Little = Little-endian
-                                                                  // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
-                                                                  //             location in a pixel, and information about whether the pixel components are floating-point or integer
-                                                                  //             values. The constants for specifying the alpha channel information are declared with the
-                                                                  //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
-                                                                  //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
-                                                                  //             and CGImageAlphaInfo constants.)
-                                                                  //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
-                                                                  //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
-                                                                  //             Graphics Contexts chapter of Quartz 2D Programming Guide.
-      if aContext = nil then exit(nil);
-      try
+       ALPaintRectangle(aCanvas, // const aBitmap: Jbitmap;
+                        aRect, // const Rect: TrectF;
+                        Fill, // const Fill: TBrush;
+                        Stroke, // const Stroke: TStrokeBrush;
+                        Shadow, // const Shadow: TALShadow
+                        Sides, // const Sides: TSides;
+                        Corners, // const Corners: TCorners;
+                        XRadius * fScreenScale, // const XRadius: Single = 0;
+                        YRadius * fScreenScale); // const YRadius: Single = 0);
 
-        //set the paint default properties
-        CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context. http://stackoverflow.com/questions/5685884/imagequality-with-cgcontextsetinterpolationquality
-        //-----
-        CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
-        CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
-
-        //init aRect
-        if Stroke.Kind <> TBrushKind.None then aRect.Inflate((-(Stroke.Thickness * FScreenScale) / 2), (-(Stroke.Thickness * FScreenScale) / 2)); // http://stackoverflow.com/questions/17038017/ios-draw-filled-circles
-
-        //fill the rectangle
-        if Fill.Kind <> TBrushKind.None then begin
-
-          //fill with gradient
-          if Fill.Kind = TBrushKind.Gradient then begin
-            if Fill.Gradient.Style = TGradientStyle.Radial then begin
-              CGContextSaveGState(aContext);
-              //-----
-              aCallback.version := 0;
-              aCallback.evaluate := @ALGradientEvaluateCallback;
-              aCallback.releaseInfo:= nil;
-              aFunc := CGFunctionCreate(fill.Gradient, // info - A pointer to user-defined storage for data that you want to pass to your callbacks.
-                                        1, // domainDimension - The number of inputs.
-                                        @aDefaultInputRange, // domain - An array of (2*domainDimension) floats used to specify the valid intervals of input values
-                                        4, // rangeDimension - The number of outputs.
-                                        nil, // range - An array of (2*rangeDimension) floats that specifies the valid intervals of output values
-                                        @aCallback); // callbacks - A pointer to a callback function table.
-              try
-                aShading := CGShadingCreateRadial(aColorSpace, // colorspace
-                                                  CGPoint.Create(TPointF.Create(aRect.Width / 2, aRect.height / 2)), // start - The center of the starting circle, in the shading's target coordinate space.
-                                                  aRect.Width / 2, // startRadius - The radius of the starting circle, in the shading's target coordinate space.
-                                                  CGPoint.Create(TPointF.Create(aRect.Width / 2, aRect.Height / 2)), // end - The center of the ending circle, in the shading's target coordinate space.
-                                                  0, // endRadius - The radius of the ending circle, in the shading's target coordinate space.
-                                                  aFunc, // function
-                                                  1, // extendStart - A Boolean value that specifies whether to extend the shading beyond the starting circle.
-                                                  1); // extendEnd - A Boolean value that specifies whether to extend the shading beyond the ending circle.
-                try
-                  _DrawPath(false{aDrawOnlyBorder});
-                  CGContextClip(aContext); // Modifies the current clipping path, using the nonzero winding number rule.
-                                           // Unlike the current path, the current clipping path is part of the graphics state. Therefore,
-                                           // to re-enlarge the paintable area by restoring the clipping path to a prior state, you must
-                                           // save the graphics state before you clip and restore the graphics state after you’ve completed
-                                           // any clipped drawing.
-                  CGContextDrawShading(aContext, aShading);
-                finally
-                  CGShadingRelease(aShading);
-                end;
-              finally
-                CGFunctionRelease(aFunc);
-              end;
-              //-----
-              CGContextRestoreGState(aContext);
-            end;
-          end
-
-          //fill with bitmap
-          else if Fill.Kind = TBrushKind.Bitmap then begin
-            if not fill.Bitmap.Bitmap.IsEmpty then begin
-              if fill.Bitmap.WrapMode = TWrapMode.TileStretch then begin
-                if fill.Bitmap.Bitmap.Map(TMapAccess.Read, aBitmapData) then
-                try
-                  aTMPContext := CGBitmapContextCreate(aBitmapData.Data, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
-                                                                         //       memory block should be at least (bytesPerRow*height) bytes.
-                                                                         //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
-                                                                         //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
-                                                       aBitmapData.Width, // width: The width, in pixels, of the required bitmap.
-                                                       aBitmapData.Height, // height: The height, in pixels, of the required bitmap.
-                                                       8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
-                                                          //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
-                                                          //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
-                                                          //                   chapter of Quartz 2D Programming Guide.
-                                                       aBitmapData.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
-                                                                                     //              a value of 0 causes the value to be calculated automatically.
-                                                       aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
-                                                                    //             bitmap graphics contexts.
-                                                       kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
-                                                                                         // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
-                                                                                         // kCGImageAlphaPremultipliedNone =  For example, RGB
-                                                       kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
-                                                                                 // kCGBitmapByteOrder32Little = Little-endian
-                                                                                 // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
-                                                                                 //             location in a pixel, and information about whether the pixel components are floating-point or integer
-                                                                                 //             values. The constants for specifying the alpha channel information are declared with the
-                                                                                 //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
-                                                                                 //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
-                                                                                 //             and CGImageAlphaInfo constants.)
-                                                                                 //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
-                                                                                 //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
-                                                                                 //             Graphics Contexts chapter of Quartz 2D Programming Guide.
-                  if aContext <> nil then begin
-                    try
-                      aImageRef := CGBitmapContextCreateImage(aTMPContext);
-                      if aImageRef <> nil then
-                      try
-                        aImage := TUIImage.Wrap(TUIImage.alloc.initWithCGImage(aImageRef));
-                        if aImage <> nil then
-                        try
-                          CGContextSaveGState(aContext);
-                          //-----
-                          _DrawPath(false{aDrawOnlyBorder});
-                          CGContextClip(aContext); // Modifies the current clipping path, using the nonzero winding number rule.
-                                                   // Unlike the current path, the current clipping path is part of the graphics state. Therefore,
-                                                   // to re-enlarge the paintable area by restoring the clipping path to a prior state, you must
-                                                   // save the graphics state before you clip and restore the graphics state after you’ve completed
-                                                   // any clipped drawing.
-                          CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
-                                             ALLowerLeftCGRect(aRect.TopLeft,
-                                                               aRect.Width,
-                                                               aRect.Height,
-                                                               aBitmapSurface.Height), // rect The location and dimensions in user space of the bounding box in which to draw the image.
-                                             aImage.CGImage); // image The image to draw.
-                          //-----
-                          CGContextRestoreGState(aContext);
-                        finally
-                          aImage.release;
-                        end;
-                      finally
-                        CGImageRelease(aImageRef);
-                      end;
-                    finally
-                      CGContextRelease(aTMPContext);
-                    end;
-                  end;
-                finally
-                  fill.Bitmap.Bitmap.Unmap(aBitmapData);
-                end;
-              end;
-            end;
-          end
-
-          //fill with solid color
-          else if Fill.Kind = TBrushKind.Solid then begin
-            aAlphaColor := TAlphaColorCGFloat.Create(Fill.Color);
-            CGContextSetRGBFillColor(aContext, aAlphaColor.R, aAlphaColor.G, aAlphaColor.B, aAlphaColor.A);
-            _DrawPath(false{aDrawOnlyBorder});
-            CGContextFillPath(aContext);
-          end;
-
-        end;
-
-        //stroke the rectangle
-        if Stroke.Kind <> TBrushKind.None then begin
-
-          //stroke with solid color
-          if Stroke.Kind = TBrushKind.Solid then begin
-            aAlphaColor := TAlphaColorCGFloat.Create(Stroke.Color);
-            CGContextSetRGBStrokeColor(aContext, aAlphaColor.R, aAlphaColor.G, aAlphaColor.B, aAlphaColor.A);
-            CGContextSetLineWidth(aContext, Stroke.Thickness * FScreenScale);
-            _DrawPath(True{aDrawOnlyBorder});
-            CGContextStrokePath(aContext);
-          end;
-
-        end;
-
-      finally
-        CGContextRelease(aContext);
-      end;
+      fBufBitmap := ALJBitmaptoTexture(aBitmap);
 
     finally
-      CGColorSpaceRelease(aColorSpace);
+      ALFreeDrawingSurface(aBitmap, aCanvas);
     end;
 
-    //convert the aBitmapSurface to texture
-    fBufBitmap := TALTexture.Create(True{aVolatile});
+    {$ELSEIF DEFINED(IOS)}
+
+    //create the drawing surface
+    ALCreateDrawingSurface(aBitmapSurface, // var aBitmapSurface: TbitmapSurface;
+                           aContext, //    Var aContext: CGContextRef;
+                           aColorSpace, // Var aColorSpace: CGColorSpaceRef;
+                           round(fBufBitmapRect.Width * FScreenScale), // const w: integer;
+                           round(fBufBitmapRect.height * FScreenScale));// const h: integer)
     try
-      fBufBitmap.Assign(aBitmapSurface);
-    except
-      ALFreeAndNil(fBufBitmap);
-      raise;
+
+       ALPaintRectangle(aContext, // const aContext: CGContextRef;
+                        aColorSpace, // const aColorSpace: CGColorSpaceRef;
+                        aBitmapSurface.Height, // const aGridHeight: Single;
+                        aRect, // const Rect: TrectF;
+                        Fill, // const Fill: TBrush;
+                        Stroke, // const Stroke: TStrokeBrush;
+                        Shadow, // const Shadow: TALShadow
+                        Sides, // const Sides: TSides;
+                        Corners, // const Corners: TCorners;
+                        XRadius * fScreenScale, // const XRadius: Single = 0;
+                        YRadius * fScreenScale); // const YRadius: Single = 0);
+
+      fBufBitmap := ALBitmapSurfacetoTexture(aBitmapSurface);
+
+    finally
+      ALFreeDrawingSurface(aBitmapSurface, // var aBitmapSurface: TbitmapSurface;
+                           aContext, // Var aContext: CGContextRef;
+                           aColorSpace); // Var aColorSpace: CGColorSpaceRef;
     end;
+
+    {$ENDIF}
 
   finally
-    ALFreeAndNil(aBitmapSurface);
+    Stroke.Thickness := aSaveStrokeThickness;
+    Stroke.OnChanged := StrokeChanged;
+    //-----
+    Shadow.OffsetX := aSaveShadowOffsetX;
+    Shadow.OffsetY := aSaveShadowOffsetY;
+    Shadow.Blur := aSaveShadowBlur;
+    Shadow.OnChanged := ShadowChanged;
   end;
 
-  {$ENDIF}
-
+  //set the result
   result := fBufBitmap;
 
   {$IFDEF debug}
@@ -1306,7 +1114,7 @@ begin
   canvas.DrawBitmap(fBufBitmap,
                     TRectF.Create(0, 0, fBufBitmap.Width, fBufBitmap.Height), {SrcRect}
                     canvas.AlignToPixel(fBufBitmapRect), {DestRect}
-                    opacity, {opacity}
+                    AbsoluteOpacity, {opacity}
                     true{highSpeed});
 
   {$ENDIF}
@@ -1320,6 +1128,12 @@ begin
     fDoubleBuffered := value;
     if not fDoubleBuffered then clearbufBitmap;
   end;
+end;
+
+{*******************************************************}
+procedure TALRectangle.SetShadow(const Value: TALShadow);
+begin
+  FShadow.Assign(Value);
 end;
 
 {************************************}
@@ -1347,6 +1161,11 @@ begin
   else FScreenScale := 1;
   fdoubleBuffered := true;
   fBufBitmap := nil;
+  fShadow := TalShadow.Create;
+  fShadow.OnChanged := ShadowChanged;
+  {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+  fShadowEffect := nil;
+  {$ENDIF}
   {$IF defined(ANDROID) or defined(IOS)}
   FOpenGLContextLostId := TMessageManager.DefaultManager.SubscribeToMessage(TContextLostMessage, OpenGLContextLostHandler);
   FOpenGLContextResetId := TMessageManager.DefaultManager.SubscribeToMessage(TContextResetMessage, OpenGLContextResetHandler);
@@ -1357,6 +1176,10 @@ end;
 destructor TALCircle.Destroy;
 begin
   clearBufBitmap;
+  alFreeAndNil(fShadow);
+  {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+  AlFreeandNil(fShadowEffect);
+  {$ENDIF}
   {$IF defined(ANDROID) or defined(IOS)}
   TMessageManager.DefaultManager.Unsubscribe(TContextLostMessage, FOpenGLContextLostId);
   TMessageManager.DefaultManager.Unsubscribe(TContextResetMessage, FOpenGLContextResetId);
@@ -1384,6 +1207,34 @@ begin
   inherited;
 end;
 
+{*************************************************}
+procedure TALCircle.ShadowChanged(Sender: TObject);
+begin
+  clearBufBitmap;
+  {$IF DEFINED(MSWindows) or DEFINED(_MACOS)}
+  if shadow.enabled then begin
+    if not assigned(fShadowEffect) then begin
+      fShadowEffect := TshadowEffect.Create(self);
+      fShadowEffect.Parent := self;
+      fShadowEffect.SetSubComponent(true);
+      fShadowEffect.stored := False;
+    end;
+    fShadowEffect.ShadowColor := shadow.ShadowColor;
+    fShadowEffect.distance := 0; // Specifies the distance between the shadow and the visual object to which TShadowEffect is applied.
+                                 // i m too lazy to calculate this from fShadow.offsetX / fShadow.offsetY - if someone want to do it
+    fShadowEffect.Direction := 0;  // Specifies the direction (in degrees) of the shadow.
+                                   // i m too lazy to calculate this from fShadow.offsetX / fShadow.offsetY - if someone want to do it
+    fShadowEffect.Opacity := 1; // Opacity is a System.Single value that takes values in the range from 0 through 1.
+                                // we use the opacity of the color instead
+    fShadowEffect.softness := fShadow.blur / 24; // Specifies the amount of blur applied to the shadow.
+                                                 // Softness is a System.Single value that takes values in the range from 0 through 9.
+                                                 // i calculate approximatly that 0.5 = around 12 for blur
+  end
+  else AlFreeAndNil(fShadowEffect);
+  {$ENDIF}
+  if FUpdating = 0 then Repaint;
+end;
+
 {************************************}
 {$IF DEFINED(IOS) or DEFINED(ANDROID)}
 function TALCircle.MakeBufBitmap: TTexture;
@@ -1391,41 +1242,19 @@ function TALCircle.MakeBufBitmap: TTexture;
 function TALCircle.MakeBufBitmap: Tbitmap;
 {$ENDIF}
 
-{$IF defined(IOS)}
-const aDefaultInputRange: array[0..1] of CGFloat = (0, 1);
-{$ENDIF}
-
-{$IF defined(ANDROID)}
-var aBitmap: Jbitmap;
-    aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
-    aShader: JRadialGradient;
-    aCanvas: Jcanvas;
-    aPaint: JPaint;
+var aSaveStrokeThickness: single;
+    aSaveShadowOffsetX: single;
+    aSaveShadowOffsetY: single;
+    aSaveShadowBlur: single;
     aRect: TRectf;
-    aColors: TJavaArray<Integer>;
-    aStops: TJavaArray<Single>;
-    aPorterDuffXfermode: jPorterDuffXfermode;
-    aBitmapInfo: AndroidBitmapInfo;
-    aPixelBuffer: Pointer;
-    aBitmapData: TBitmapData;
-    aJDestRectf: JrectF;
-    aJSrcRect: Jrect;
-    i: integer;
-{$ELSEIF defined(IOS)}
-var aBitmapSurface: TbitmapSurface;
+    {$IF defined(ANDROID)}
+    aBitmap: Jbitmap;
+    aCanvas: Jcanvas;
+    {$ELSEIF defined(IOS)}
+    aBitmapSurface: TbitmapSurface;
     aColorSpace: CGColorSpaceRef;
     aContext: CGContextRef;
-    aAlphaColor: TAlphaColorCGFloat;
-    aCallback: CGFunctionCallbacks;
-    aShading: CGShadingRef;
-    aFunc: CGFunctionRef;
-    aRect: TRectf;
-    aBitmapData: TBitmapData;
-    aTMPContext: CGContextRef;
-    aImageRef: CGImageRef;
-    aImage: UIImage;
-{$ENDIF}
+    {$ENDIF}
 
 begin
 
@@ -1452,388 +1281,89 @@ begin
   try
   {$endif}
 
-  {$IFDEF ANDROID}
-
   //init fBufBitmapRect / aRect
   fBufBitmapRect := ALAlignDimensionToPixelRound(TRectF.Create(0, 0, 1, 1).FitInto(LocalRect), FScreenScale); // to have the pixel aligned width and height
   aRect := TrectF.Create(0,0,round(fBufBitmapRect.Width * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
-
-  //create the main bitmap on with we will draw
-  aBitmap := TJBitmap.JavaClass.createBitmap(round(aRect.Width),
-                                             round(aRect.Height),
-                                             TJBitmap_Config.JavaClass.ARGB_8888);
-  try
-
-    //create the canvas and the paint
-    aCanvas := TJCanvas.JavaClass.init(aBitmap);
-    aPaint := TJPaint.JavaClass.init;
-    aPaint.setAntiAlias(true); // Enabling this flag will cause all draw operations that support antialiasing to use it.
-    aPaint.setFilterBitmap(True); // enable bilinear sampling on scaled bitmaps. If cleared, scaled bitmaps will be drawn with nearest neighbor sampling, likely resulting in artifacts.
-    apaint.setDither(true); // Enabling this flag applies a dither to any blit operation where the target's colour space is more constrained than the source.
-
-    //init aRect
-    if Stroke.Kind <> TBrushKind.None then aRect.Inflate((-(Stroke.Thickness * FScreenScale) / 2), (-(Stroke.Thickness * FScreenScale) / 2)); // http://stackoverflow.com/questions/17038017/ios-draw-filled-circles
-
-    //fill the circle
-    if Fill.Kind <> TBrushKind.None then begin
-
-      //init aPaint
-      aPaint.setStyle(TJPaint_Style.JavaClass.FILL); // FILL_AND_STROCK it's absolutely useless, because it's will fill on the full aRect + Stroke.Thickness :( this result&ing in border if the fill is for exemple black and border white
-
-      //fill with gradient
-      if Fill.Kind = TBrushKind.Gradient then begin
-        if Fill.Gradient.Style = TGradientStyle.Radial then begin
-          aColors := TJavaArray<Integer>.Create(Fill.Gradient.Points.Count);
-          aStops := TJavaArray<Single>.Create(Fill.Gradient.Points.Count);
-          for i := 0 to Fill.Gradient.Points.Count - 1 do begin
-            aColors[Fill.Gradient.Points.Count - 1 - i] := integer(Fill.Gradient.Points[i].Color);
-            aStops[Fill.Gradient.Points.Count - 1 - i] := 1 - Fill.Gradient.Points[i].Offset;
-          end;
-          aShader := TJRadialGradient.JavaClass.init(aRect.CenterPoint.x{x}, aRect.CenterPoint.y{y}, aRect.width / 2{radius},  aColors, aStops, TJShader_TileMode.JavaClass.CLAMP{tile});
-          aPaint.setShader(aShader);
-          aCanvas.drawCircle(aRect.CenterPoint.x{cx}, aRect.CenterPoint.y{cy}, aRect.width / 2{radius}, apaint);
-          aPaint.setShader(nil);
-          aShader := nil;
-          alfreeandNil(aColors);
-          alfreeandNil(aStops);
-        end;
-      end
-
-      //fill with bitmap
-      else if Fill.Kind = TBrushKind.Bitmap then begin
-        if not fill.Bitmap.Bitmap.IsEmpty then begin
-          if fill.Bitmap.WrapMode = TWrapMode.TileStretch then begin
-            //-----
-            aTmpBitmap := TJBitmap.JavaClass.createBitmap(fill.Bitmap.Bitmap.Width, fill.Bitmap.Bitmap.height, TJBitmap_Config.JavaClass.ARGB_8888);
-            //-----
-            FillChar(aBitmapInfo, SizeOf(aBitmapInfo), 0);
-            if (AndroidBitmap_getInfo(TJNIResolver.GetJNIEnv, (aTmpBitmap as ILocalObject).GetObjectID, @aBitmapInfo) = 0) and
-               (AndroidBitmap_lockPixels(TJNIResolver.GetJNIEnv, (aTmpBitmap as ILocalObject).GetObjectID, @aPixelBuffer) = 0) then
-            try
-              if fill.Bitmap.Bitmap.Map(TMapAccess.Read, aBitmapData) then
-              try
-                System.Move(aBitmapData.Data^, aPixelBuffer^, aBitmapData.Pitch * aBitmapData.Height);
-              finally
-                fill.Bitmap.Bitmap.Unmap(aBitmapData);
-              end;
-            finally
-              AndroidBitmap_unlockPixels(TJNIResolver.GetJNIEnv, (aTmpBitmap as ILocalObject).GetObjectID);
-            end;
-            //-----
-            aCanvas.drawCircle(aRect.CenterPoint.x{cx}, aRect.CenterPoint.y{cy}, aRect.width / 2{radius}, apaint);
-            aPorterDuffXfermode := TJPorterDuffXfermode.JavaClass.init(TJPorterDuff_Mode.JavaClass.SRC_IN);
-            aJDestRectf := TJRectf.JavaClass.init(aRect.left, aRect.top, aRect.right, aRect.bottom);
-            aJSrcRect := TJRect.JavaClass.init(0, 0, fill.Bitmap.Bitmap.Width, fill.Bitmap.Bitmap.height);
-            aPaint.setXfermode(aPorterDuffXfermode);
-            aCanvas.drawBitmap(aTMPBitmap, aJSrcRect, aJDestRectf, apaint);
-            aPaint.setXfermode(nil);
-            aPorterDuffXfermode := nil;
-            aJSrcRect := nil;
-            aJDestRectf := nil;
-            //-----
-            aTmpBitmap.recycle;
-            aTmpBitmap := nil;
-            //-----
-          end;
-        end;
-      end
-
-      //fill with solid color
-      else if Fill.Kind = TBrushKind.Solid then begin
-        aPaint.setColor(Fill.Color);
-        aCanvas.drawCircle(aRect.CenterPoint.x{cx}, aRect.CenterPoint.y{cy}, aRect.width / 2{radius}, apaint);
-      end;
-
-    end;
-
-    //stroke the circle
-    if Stroke.Kind <> TBrushKind.None then begin
-
-      //init aPaint
-      aPaint.setStyle(TJPaint_Style.JavaClass.STROKE);
-      aPaint.setStrokeWidth(Stroke.Thickness * FScreenScale);
-
-      //stroke with solid color
-      if Stroke.Kind = TBrushKind.Solid then begin
-        aPaint.setColor(Stroke.Color);
-        aCanvas.drawCircle(aRect.CenterPoint.x{cx}, aRect.CenterPoint.y{cy}, aRect.width / 2{radius}, apaint);
-      end;
-
-    end;
-
-    //free the paint and the canvas
-    aPaint := nil;
-    aCanvas := nil;
-
-    //init the bitmapSurface that we will use to convert the jbitmap
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the JBitmapToSurface to the bitmapSurface
-      if JBitmapToSurface(aBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        fBufBitmap := TALTexture.Create(True{aVolatile});
-        try
-          fBufBitmap.Assign(aBitmapSurface);
-        except
-          ALFreeAndNil(fBufBitmap);
-          raise;
-        end;
-
-      end
-      else fBufBitmap := nil;
-
-    finally
-      ALFreeAndNil(abitmapSurface);
-    end;
-
-  finally
-    aBitmap.recycle;
-    aBitmap := nil;
+  if Shadow.enabled then begin
+    fBufBitmapRect.Inflate(Shadow.blur, Shadow.blur); // add the extra space needed to draw the shadow
+    fBufBitmapRect := ALAlignDimensionToPixelRound(fBufBitmapRect, FScreenScale); // to have the pixel aligned width and height
+    aRect.Offset(Shadow.blur * FScreenScale, Shadow.blur * FScreenScale);
   end;
 
-  {$ELSEIF DEFINED(IOS)}
-
-  //init fBufBitmapRect / aRect
-  fBufBitmapRect := ALAlignDimensionToPixelRound(TRectF.Create(0, 0, 1, 1).FitInto(LocalRect), FScreenScale); // to have the pixel aligned width and height
-  aRect := TrectF.Create(0,0,round(fBufBitmapRect.Width * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
-
-  //create the bitmapSurface
-  aBitmapSurface := TbitmapSurface.Create;
+  //translate Stroke.Thickness from virtual to real pixel
+  Stroke.OnChanged := Nil;
+  aSaveStrokeThickness := Stroke.Thickness;
+  Stroke.Thickness := Stroke.Thickness * fScreenScale;
+  //-----
+  Shadow.OnChanged := nil;
+  aSaveShadowOffsetX := Shadow.OffsetX;
+  aSaveShadowOffsetY := Shadow.OffsetY;
+  aSaveShadowBlur := Shadow.Blur;
+  Shadow.OffsetX := Shadow.OffsetX * fScreenScale;
+  Shadow.OffsetY := Shadow.OffsetY * fScreenScale;
+  Shadow.Blur := Shadow.Blur * fScreenScale;
   try
 
-    //init aBitmapSurface
-    aBitmapSurface.SetSize(round(aRect.Width),
-                           round(aRect.Height));
+    {$IFDEF ANDROID}
 
-    //init the color space
-    aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
-    if aColorSpace = nil then exit(nil);         // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
+    //create the drawing surface
+    ALCreateDrawingSurface(aBitmap, // Var aBitmap: Jbitmap;
+                           aCanvas, // var aCanvas: Jcanvas;
+                           round(fBufBitmapRect.Width * FScreenScale), // const w: integer;
+                           round(fBufBitmapRect.Height * FScreenScale));// const h: integer)
     try
 
-      //create the context
-      aContext := CGBitmapContextCreate(aBitmapSurface.Bits, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
-                                                             //       memory block should be at least (bytesPerRow*height) bytes.
-                                                             //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
-                                                             //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
-                                        aBitmapSurface.Width, // width: The width, in pixels, of the required bitmap.
-                                        aBitmapSurface.Height, // height: The height, in pixels, of the required bitmap.
-                                        8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
-                                           //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
-                                           //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
-                                           //                   chapter of Quartz 2D Programming Guide.
-                                        aBitmapSurface.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
-                                                              //              a value of 0 causes the value to be calculated automatically.
-                                        aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
-                                                     //             bitmap graphics contexts.
-                                        kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
-                                                                          // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
-                                                                          // kCGImageAlphaPremultipliedNone =  For example, RGB
-                                        kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
-                                                                  // kCGBitmapByteOrder32Little = Little-endian
-                                                                  // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
-                                                                  //             location in a pixel, and information about whether the pixel components are floating-point or integer
-                                                                  //             values. The constants for specifying the alpha channel information are declared with the
-                                                                  //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
-                                                                  //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
-                                                                  //             and CGImageAlphaInfo constants.)
-                                                                  //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
-                                                                  //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
-                                                                  //             Graphics Contexts chapter of Quartz 2D Programming Guide.
-      if aContext = nil then exit(nil);
-      try
+      ALPaintCircle(aCanvas, // const aBitmap: Jbitmap;
+                    aRect, // const Rect: TrectF;
+                    Fill, // const Fill: TBrush;
+                    Stroke, // const Stroke: TStrokeBrush;
+                    Shadow); // const Shadow: TALShadow
 
-        //set the paint default properties
-        CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context. http://stackoverflow.com/questions/5685884/imagequality-with-cgcontextsetinterpolationquality
-        //-----
-        CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
-        CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
-
-        //init aRect
-        if Stroke.Kind <> TBrushKind.None then aRect.Inflate((-(Stroke.Thickness * FScreenScale) / 2), (-(Stroke.Thickness * FScreenScale) / 2)); // http://stackoverflow.com/questions/17038017/ios-draw-filled-circles
-
-        //fill the circle
-        if Fill.Kind <> TBrushKind.None then begin
-
-          //fill with gradient
-          if Fill.Kind = TBrushKind.Gradient then begin
-            if Fill.Gradient.Style = TGradientStyle.Radial then begin
-              CGContextSaveGState(aContext);
-              //-----
-              aCallback.version := 0;
-              aCallback.evaluate := @ALGradientEvaluateCallback;
-              aCallback.releaseInfo:= nil;
-              aFunc := CGFunctionCreate(fill.Gradient, // info - A pointer to user-defined storage for data that you want to pass to your callbacks.
-                                        1, // domainDimension - The number of inputs.
-                                        @aDefaultInputRange, // domain - An array of (2*domainDimension) floats used to specify the valid intervals of input values
-                                        4, // rangeDimension - The number of outputs.
-                                        nil, // range - An array of (2*rangeDimension) floats that specifies the valid intervals of output values
-                                        @aCallback); // callbacks - A pointer to a callback function table.
-              try
-                aShading := CGShadingCreateRadial(aColorSpace, // colorspace
-                                                  CGPoint.Create(TPointF.Create(aRect.Width / 2, aRect.height / 2)), // start - The center of the starting circle, in the shading's target coordinate space.
-                                                  aRect.Width / 2, // startRadius - The radius of the starting circle, in the shading's target coordinate space.
-                                                  CGPoint.Create(TPointF.Create(aRect.Width / 2, aRect.Height / 2)), // end - The center of the ending circle, in the shading's target coordinate space.
-                                                  0, // endRadius - The radius of the ending circle, in the shading's target coordinate space.
-                                                  aFunc, // function
-                                                  1, // extendStart - A Boolean value that specifies whether to extend the shading beyond the starting circle.
-                                                  1); // extendEnd - A Boolean value that specifies whether to extend the shading beyond the ending circle.
-                try
-                  CGContextBeginPath(aContext);  // Creates a new empty path in a graphics context.
-                  CGContextAddEllipseInRect(aContext, ALLowerLeftCGRect(aRect.TopLeft,
-                                                                        aRect.Width,
-                                                                        aRect.Height,
-                                                                        aBitmapSurface.Height));
-                  CGContextClosePath(aContext); // Closes and terminates the current path’s subpath.
-                  CGContextClip(aContext); // Modifies the current clipping path, using the nonzero winding number rule.
-                                           // Unlike the current path, the current clipping path is part of the graphics state. Therefore,
-                                           // to re-enlarge the paintable area by restoring the clipping path to a prior state, you must
-                                           // save the graphics state before you clip and restore the graphics state after you’ve completed
-                                           // any clipped drawing.
-                  CGContextDrawShading(aContext, aShading);
-                finally
-                  CGShadingRelease(aShading);
-                end;
-              finally
-                CGFunctionRelease(aFunc);
-              end;
-              //-----
-              CGContextRestoreGState(aContext);
-            end;
-          end
-
-          //fill with bitmap
-          else if Fill.Kind = TBrushKind.Bitmap then begin
-            if not fill.Bitmap.Bitmap.IsEmpty then begin
-              if fill.Bitmap.WrapMode = TWrapMode.TileStretch then begin
-                if fill.Bitmap.Bitmap.Map(TMapAccess.Read, aBitmapData) then
-                try
-                  aTMPContext := CGBitmapContextCreate(aBitmapData.Data, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
-                                                                         //       memory block should be at least (bytesPerRow*height) bytes.
-                                                                         //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
-                                                                         //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
-                                                       aBitmapData.Width, // width: The width, in pixels, of the required bitmap.
-                                                       aBitmapData.Height, // height: The height, in pixels, of the required bitmap.
-                                                       8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
-                                                          //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
-                                                          //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
-                                                          //                   chapter of Quartz 2D Programming Guide.
-                                                       aBitmapData.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
-                                                                                     //              a value of 0 causes the value to be calculated automatically.
-                                                       aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
-                                                                    //             bitmap graphics contexts.
-                                                       kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
-                                                                                         // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
-                                                                                         // kCGImageAlphaPremultipliedNone =  For example, RGB
-                                                       kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
-                                                                                 // kCGBitmapByteOrder32Little = Little-endian
-                                                                                 // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
-                                                                                 //             location in a pixel, and information about whether the pixel components are floating-point or integer
-                                                                                 //             values. The constants for specifying the alpha channel information are declared with the
-                                                                                 //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
-                                                                                 //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
-                                                                                 //             and CGImageAlphaInfo constants.)
-                                                                                 //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
-                                                                                 //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
-                                                                                 //             Graphics Contexts chapter of Quartz 2D Programming Guide.
-                  if aContext <> nil then begin
-                    try
-                      aImageRef := CGBitmapContextCreateImage(aTMPContext);
-                      if aImageRef <> nil then
-                      try
-                        aImage := TUIImage.Wrap(TUIImage.alloc.initWithCGImage(aImageRef));
-                        if aImage <> nil then
-                        try
-                          CGContextSaveGState(aContext);
-                          //-----
-                          CGContextBeginPath(aContext);  // Creates a new empty path in a graphics context.
-                          CGContextAddEllipseInRect(aContext, ALLowerLeftCGRect(aRect.TopLeft,
-                                                                                aRect.Width,
-                                                                                aRect.Height,
-                                                                                aBitmapSurface.Height)); // Adds an ellipse that fits inside the specified rectangle.
-                          CGContextClosePath(aContext); // Closes and terminates the current path’s subpath.
-                          CGContextClip(aContext); // Modifies the current clipping path, using the nonzero winding number rule.
-                                                   // Unlike the current path, the current clipping path is part of the graphics state. Therefore,
-                                                   // to re-enlarge the paintable area by restoring the clipping path to a prior state, you must
-                                                   // save the graphics state before you clip and restore the graphics state after you’ve completed
-                                                   // any clipped drawing.
-                          CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
-                                             ALLowerLeftCGRect(aRect.TopLeft,
-                                                               aRect.Width,
-                                                               aRect.Height,
-                                                               aBitmapSurface.Height), // rect The location and dimensions in user space of the bounding box in which to draw the image.
-                                             aImage.CGImage); // image The image to draw.
-                          //-----
-                          CGContextRestoreGState(aContext);
-                        finally
-                          aImage.release;
-                        end;
-                      finally
-                        CGImageRelease(aImageRef);
-                      end;
-                    finally
-                      CGContextRelease(aTMPContext);
-                    end;
-                  end;
-                finally
-                  fill.Bitmap.Bitmap.Unmap(aBitmapData);
-                end;
-              end;
-            end;
-          end
-
-          //fill with solid color
-          else if Fill.Kind = TBrushKind.Solid then begin
-            aAlphaColor := TAlphaColorCGFloat.Create(Fill.Color);
-            CGContextSetRGBFillColor(aContext, aAlphaColor.R, aAlphaColor.G, aAlphaColor.B, aAlphaColor.A);
-            CGContextFillEllipseInRect(aContext, ALLowerLeftCGRect(aRect.TopLeft,
-                                                                   aRect.Width,
-                                                                   aRect.Height,
-                                                                   aBitmapSurface.Height));
-          end;
-
-        end;
-
-        //stroke the circle
-        if Stroke.Kind <> TBrushKind.None then begin
-
-          //stroke with solid color
-          if Stroke.Kind = TBrushKind.Solid then begin
-            aAlphaColor := TAlphaColorCGFloat.Create(Stroke.Color);
-            CGContextSetRGBStrokeColor(aContext, aAlphaColor.R, aAlphaColor.G, aAlphaColor.B, aAlphaColor.A);
-            CGContextSetLineWidth(aContext, Stroke.Thickness * FScreenScale);
-            CGContextStrokeEllipseInRect(aContext, ALLowerLeftCGRect(aRect.TopLeft,
-                                                                     aRect.Width,
-                                                                     aRect.Height,
-                                                                     aBitmapSurface.Height));
-          end;
-
-        end;
-
-      finally
-        CGContextRelease(aContext);
-      end;
+      fBufBitmap := ALJBitmaptoTexture(aBitmap);
 
     finally
-      CGColorSpaceRelease(aColorSpace);
+      ALFreeDrawingSurface(aBitmap, aCanvas);
     end;
 
-    //convert the aBitmapSurface to texture
-    fBufBitmap := TALTexture.Create(True{aVolatile});
+    {$ELSEIF DEFINED(IOS)}
+
+     //create the drawing surface
+    ALCreateDrawingSurface(aBitmapSurface, // var aBitmapSurface: TbitmapSurface;
+                           aContext, //    Var aContext: CGContextRef;
+                           aColorSpace, // Var aColorSpace: CGColorSpaceRef;
+                           round(fBufBitmapRect.Width * FScreenScale), // const w: integer;
+                           round(fBufBitmapRect.Height * FScreenScale));// const h: integer)
     try
-      fBufBitmap.Assign(aBitmapSurface);
-    except
-      ALFreeAndNil(fBufBitmap);
-      raise;
+
+      ALPaintCircle(aContext, // const aContext: CGContextRef;
+                    aColorSpace, // const aColorSpace: CGColorSpaceRef;
+                    aBitmapSurface.Height, // const aGridHeight: Single;
+                    aRect, // const Rect: TrectF;
+                    Fill, // const Fill: TBrush;
+                    Stroke, // const Stroke: TStrokeBrush;
+                    Shadow); // const Shadow: TALShadow
+
+      fBufBitmap := ALBitmapSurfacetoTexture(aBitmapSurface);
+
+    finally
+      ALFreeDrawingSurface(aBitmapSurface, // var aBitmapSurface: TbitmapSurface;
+                           aContext, // Var aContext: CGContextRef;
+                           aColorSpace); // Var aColorSpace: CGColorSpaceRef;
     end;
+
+    {$ENDIF}
 
   finally
-    ALFreeAndNil(aBitmapSurface);
+    Stroke.Thickness := aSaveStrokeThickness;
+    Stroke.OnChanged := StrokeChanged;
+    //-----
+    Shadow.OffsetX := aSaveShadowOffsetX;
+    Shadow.OffsetY := aSaveShadowOffsetY;
+    Shadow.Blur := aSaveShadowBlur;
+    Shadow.OnChanged := ShadowChanged;
   end;
 
-  {$ENDIF}
-
+  //set the result
   result := fBufBitmap;
 
   {$IFDEF debug}
@@ -1881,6 +1411,12 @@ begin
     fDoubleBuffered := value;
     if not fDoubleBuffered then clearbufBitmap;
   end;
+end;
+
+{****************************************************}
+procedure TALCircle.SetShadow(const Value: TALShadow);
+begin
+  FShadow.Assign(Value);
 end;
 
 {************************************}
@@ -1958,7 +1494,6 @@ const aDefaultInputRange: array[0..1] of CGFloat = (0, 1);
 
 {$IF defined(ANDROID)}
 var aBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
     aCanvas: Jcanvas;
     aPaint: JPaint;
     aRect: TRectf;
@@ -2027,14 +1562,14 @@ begin
   end;
   aRect := TrectF.Create(0,0,round(fBufBitmapRect.Width * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
 
-  //create the main bitmap on with we will draw
-  aBitmap := TJBitmap.JavaClass.createBitmap(round(aRect.Width),
-                                             round(aRect.Height),
-                                             TJBitmap_Config.JavaClass.ARGB_8888);
+  //create the drawing surface
+  ALCreateDrawingSurface(aBitmap, // Var aBitmap: Jbitmap;
+                         aCanvas, // var aCanvas: Jcanvas;
+                         round(aRect.Width), // const w: integer;
+                         round(aRect.Height));// const h: integer)
   try
 
     //create the canvas and the paint
-    aCanvas := TJCanvas.JavaClass.init(aBitmap);
     aPaint := TJPaint.JavaClass.init;
     aPaint.setAntiAlias(true); // Enabling this flag will cause all draw operations that support antialiasing to use it.
     aPaint.setFilterBitmap(True); // enable bilinear sampling on scaled bitmaps. If cleared, scaled bitmaps will be drawn with nearest neighbor sampling, likely resulting in artifacts.
@@ -2075,34 +1610,12 @@ begin
 
     //free the paint and the canvas
     aPaint := nil;
-    aCanvas := nil;
 
-    //init the bitmapSurface that we will use to convert the jbitmap
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the JBitmapToSurface to the bitmapSurface
-      if JBitmapToSurface(aBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        fBufBitmap := TALTexture.Create(True{aVolatile});
-        try
-          fBufBitmap.Assign(aBitmapSurface);
-        except
-          ALFreeAndNil(fBufBitmap);
-          raise;
-        end;
-
-      end
-      else fBufBitmap := nil;
-
-    finally
-      ALFreeAndNil(abitmapSurface);
-    end;
+    //convert aBitmap to TALTexture
+    fBufBitmap := ALJBitmaptoTexture(aBitmap);
 
   finally
-    aBitmap.recycle;
-    aBitmap := nil;
+    ALFreeDrawingSurface(aBitmap, aCanvas);
   end;
 
   {$ELSEIF DEFINED(IOS)}
@@ -2133,108 +1646,53 @@ begin
   end;
   aRect := TrectF.Create(0,0,round(fBufBitmapRect.Width * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
 
-  //create the bitmapSurface
-  aBitmapSurface := TbitmapSurface.Create;
+  //create the drawing surface
+  ALCreateDrawingSurface(aBitmapSurface, // var aBitmapSurface: TbitmapSurface;
+                         aContext, //    Var aContext: CGContextRef;
+                         aColorSpace, // Var aColorSpace: CGColorSpaceRef;
+                         round(aRect.Width), // const w: integer;
+                         round(aRect.Height));// const h: integer)
   try
 
-    //init aBitmapSurface
-    aBitmapSurface.SetSize(round(aRect.Width),
-                           round(aRect.Height));
+    //stroke the circle
+    if Stroke.Kind <> TBrushKind.None then begin
 
-    //init the color space
-    aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
-    if aColorSpace = nil then exit(nil);         // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
-    try
-
-      //create the context
-      aContext := CGBitmapContextCreate(aBitmapSurface.Bits, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
-                                                             //       memory block should be at least (bytesPerRow*height) bytes.
-                                                             //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
-                                                             //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
-                                        aBitmapSurface.Width, // width: The width, in pixels, of the required bitmap.
-                                        aBitmapSurface.Height, // height: The height, in pixels, of the required bitmap.
-                                        8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
-                                           //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
-                                           //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
-                                           //                   chapter of Quartz 2D Programming Guide.
-                                        aBitmapSurface.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
-                                                              //              a value of 0 causes the value to be calculated automatically.
-                                        aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
-                                                     //             bitmap graphics contexts.
-                                        kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
-                                                                          // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
-                                                                          // kCGImageAlphaPremultipliedNone =  For example, RGB
-                                        kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
-                                                                  // kCGBitmapByteOrder32Little = Little-endian
-                                                                  // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
-                                                                  //             location in a pixel, and information about whether the pixel components are floating-point or integer
-                                                                  //             values. The constants for specifying the alpha channel information are declared with the
-                                                                  //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
-                                                                  //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
-                                                                  //             and CGImageAlphaInfo constants.)
-                                                                  //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
-                                                                  //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
-                                                                  //             Graphics Contexts chapter of Quartz 2D Programming Guide.
-      if aContext = nil then exit(nil);
-      try
-
-        //set the paint default properties
-        CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context. http://stackoverflow.com/questions/5685884/imagequality-with-cgcontextsetinterpolationquality
-        //-----
-        CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
-        CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
-
-        //stroke the circle
-        if Stroke.Kind <> TBrushKind.None then begin
-
-          //stroke with solid color
-          if Stroke.Kind = TBrushKind.Solid then begin
-            aAlphaColor := TAlphaColorCGFloat.Create(Stroke.Color);
-            CGContextSetRGBStrokeColor(aContext, aAlphaColor.R, aAlphaColor.G, aAlphaColor.B, aAlphaColor.A);
-            CGContextSetLineWidth(aContext, Stroke.Thickness * FScreenScale);
-            case lineType of
-              TLineType.Diagonal: begin
-                                    CGContextBeginPath(acontext);
-                                    CGContextMoveToPoint(acontext, aRect.left, aBitmapSurface.height - aRect.top);
-                                    CGContextAddLineToPoint(acontext, aRect.right, aBitmapSurface.height - aRect.Bottom);
-                                  end;
-              TLineType.Top,
-              TLineType.Bottom: begin
-                                  CGContextBeginPath(acontext);
-                                  CGContextMoveToPoint(acontext, aRect.left, aBitmapSurface.height - ((aRect.bottom - aRect.top) / 2));
-                                  CGContextAddLineToPoint(acontext, aRect.right, aBitmapSurface.height - ((aRect.bottom - aRect.top) / 2));
-                                end;
-              TLineType.Left,
-              TLineType.Right: begin
-                                 CGContextBeginPath(acontext);
-                                 CGContextMoveToPoint(acontext, (aRect.right - aRect.left) / 2, aBitmapSurface.height - aRect.top);
-                                 CGContextAddLineToPoint(acontext, (aRect.right - aRect.left) / 2, aBitmapSurface.height - aRect.Bottom);
-                               end;
-            end;
-            CGContextStrokePath(acontext);
-          end;
-
+      //stroke with solid color
+      if Stroke.Kind = TBrushKind.Solid then begin
+        aAlphaColor := TAlphaColorCGFloat.Create(Stroke.Color);
+        CGContextSetRGBStrokeColor(aContext, aAlphaColor.R, aAlphaColor.G, aAlphaColor.B, aAlphaColor.A);
+        CGContextSetLineWidth(aContext, Stroke.Thickness * FScreenScale);
+        case lineType of
+          TLineType.Diagonal: begin
+                                CGContextBeginPath(acontext);
+                                CGContextMoveToPoint(acontext, aRect.left, aBitmapSurface.height - aRect.top);
+                                CGContextAddLineToPoint(acontext, aRect.right, aBitmapSurface.height - aRect.Bottom);
+                              end;
+          TLineType.Top,
+          TLineType.Bottom: begin
+                              CGContextBeginPath(acontext);
+                              CGContextMoveToPoint(acontext, aRect.left, aBitmapSurface.height - ((aRect.bottom - aRect.top) / 2));
+                              CGContextAddLineToPoint(acontext, aRect.right, aBitmapSurface.height - ((aRect.bottom - aRect.top) / 2));
+                            end;
+          TLineType.Left,
+          TLineType.Right: begin
+                             CGContextBeginPath(acontext);
+                             CGContextMoveToPoint(acontext, (aRect.right - aRect.left) / 2, aBitmapSurface.height - aRect.top);
+                             CGContextAddLineToPoint(acontext, (aRect.right - aRect.left) / 2, aBitmapSurface.height - aRect.Bottom);
+                           end;
         end;
-
-      finally
-        CGContextRelease(aContext);
+        CGContextStrokePath(acontext);
       end;
 
-    finally
-      CGColorSpaceRelease(aColorSpace);
     end;
 
     //convert the aBitmapSurface to texture
-    fBufBitmap := TALTexture.Create(True{aVolatile});
-    try
-      fBufBitmap.Assign(aBitmapSurface);
-    except
-      ALFreeAndNil(fBufBitmap);
-      raise;
-    end;
+    fBufBitmap := ALBitmapSurfacetoTexture(aBitmapSurface);
 
   finally
-    ALFreeAndNil(aBitmapSurface);
+    ALFreeDrawingSurface(aBitmapSurface, // var aBitmapSurface: TbitmapSurface;
+                         aContext, // Var aContext: CGContextRef;
+                         aColorSpace); // Var aColorSpace: CGColorSpaceRef;
   end;
 
   {$ENDIF}
@@ -2304,69 +1762,48 @@ begin
 end;
 {$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-constructor TALDoubleBufferedTextLayoutNG.Create(const ACanvas: TCanvas; const aTextControl: TALText);
+{**************************************************************************************************}
+constructor TALDoubleBufferedTextLayout.Create(const ACanvas: TCanvas; const aTextControl: TALText);
 var aScreenSrv: IFMXScreenService;
 begin
   inherited Create(ACanvas);
   if TPlatformServices.Current.SupportsPlatformService(IFMXScreenService, aScreenSrv) then FScreenScale := aScreenSrv.GetScreenScale
   else FScreenScale := 1;
-  fdoubleBuffered := true;
   fBufBitmap := nil;
   fTextControl := aTextControl;
+  {$IF defined(ANDROID) or defined(IOS)}
   FOpenGLContextLostId := TMessageManager.DefaultManager.SubscribeToMessage(TContextLostMessage, OpenGLContextLostHandler);
   FOpenGLContextResetId := TMessageManager.DefaultManager.SubscribeToMessage(TContextResetMessage, OpenGLContextResetHandler);
+  {$ENDIF}
 end;
-{$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-destructor TALDoubleBufferedTextLayoutNG.Destroy;
+{*********************************************}
+destructor TALDoubleBufferedTextLayout.Destroy;
 begin
   clearBufBitmap;
+  {$IF defined(ANDROID) or defined(IOS)}
   TMessageManager.DefaultManager.Unsubscribe(TContextLostMessage, FOpenGLContextLostId);
   TMessageManager.DefaultManager.Unsubscribe(TContextResetMessage, FOpenGLContextResetId);
+  {$ENDIF}
   inherited;
 end;
-{$ENDIF}
 
 {************************************}
-{$IF defined(android) or defined(IOS)}
-function TALDoubleBufferedTextLayoutNG.MakeBufBitmap: TTexture;
-
-{$IF defined(android)}
-var aBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
-    aRect: TRectf;
-    aPaint: JPaint;
-    aTypeface: JTypeface;
-    aStyle: integer;
-    aCanvas: Jcanvas;
-    aBreakedTextItems: TALBreakTextItems;
-    aBreakedTextItem: TALBreakTextItem;
-    i: integer;
-{$ELSEIF defined(IOS)}
-var aBitmapSurface: TbitmapSurface;
-    aColorSpace: CGColorSpaceRef;
-    aContext: CGContextRef;
-    aRect: TRectf;
-    aBreakedTextItems: TALBreakTextItems;
-    aBreakedTextItem: TALBreakTextItem;
-    i: integer;
+{$IF DEFINED(IOS) or DEFINED(ANDROID)}
+function TALDoubleBufferedTextLayout.MakeBufBitmap: TTexture;
+{$ELSE}
+function TALDoubleBufferedTextLayout.MakeBufBitmap: Tbitmap;
 {$ENDIF}
-
+var aOptions: TALDrawMultiLineTextOptions;
 begin
 
-  if (csDesigning in fTextControl.ComponentState) or
-     (not fdoubleBuffered) or
-     (fTextControl.Scene = nil) or // << fTextControl.Scene = nil mean mostly the fTextControl (or his parent) is not yet assigned to any form
+  if (fTextControl.Scene = nil) or // << fTextControl.Scene = nil mean mostly the fTextControl (or his parent) is not yet assigned to any form
      (fTextControl.text.IsEmpty) then begin
     clearBufBitmap;
     exit(nil);
   end;
 
-  // we need to use the value of the fTextControl and not of the inherited TTextLayoutNG
+  // we need to use the value of the fTextControl and not of the current TTextLayout
   // because TText update some value on each call to adjustsize with different value that will
   // be used in paint
   if (fBufBitmap <> nil) and
@@ -2396,9 +1833,7 @@ begin
        ) and
        (
         (SameValue(fBufSize.cy, MaxSize.y, TEpsilon.position)) or // if we already calculate the buf for maxsize.y
-        (SameValue(fbufBitmapRect.height, MaxSize.y, TEpsilon.position)) or // if fbufBitmapRect.height = MaxSize.y we can not do anything better ;)
-        ((not fBufTextBreaked) and
-         (CompareValue(fbufBitmapRect.height, MaxSize.y, TEpsilon.position) <= 0)) // if fbufBitmapRect.height <= MaxSize.y and text wasn't breaked we can't do anything better
+        (CompareValue(fbufBitmapRect.height, MaxSize.y, TEpsilon.position) <= 0) // if fbufBitmapRect.height <= MaxSize.y we can't do anything better
        )
       )
      ) and
@@ -2418,265 +1853,96 @@ begin
   fBufText := fTextControl.Text;
 
   {$IFDEF debug}
-  ALLog('TALDoubleBufferedTextLayoutNG.MakeBufBitmap', 'TALDoubleBufferedTextLayoutNG.MakeBufBitmap - text:' + fBufText, TalLogType.verbose);
+  ALLog('TALDoubleBufferedTextLayout.MakeBufBitmap', 'text:' + fBufText + ' - MaxSize: '+floattostr(fBufSize.cX)+'x'+floattostr(fBufSize.cY), TalLogType.verbose);
   inc(AlDebugTextMakeBufBitmapCount);
   AlDebugTextMakeBufBitmapStopWatch.Start;
   try
   {$endif}
 
-  {$IF defined(android)}
-
-  //init fBufBitmapRect / aRect
+  //init fBufBitmapRect
   fBufBitmapRect := TRectF.Create(0, 0, fBufSize.cX * FScreenScale, fBufSize.cY * FScreenScale);
 
-  //create aPaint
-  aPaint := TJPaint.JavaClass.init;
-  aPaint.setAntiAlias(true); // Enabling this flag will cause all draw operations that support antialiasing to use it.
-  aPaint.setSubpixelText(true); // Enabling this flag causes glyph advances to be computed with subpixel accuracy.
-  aPaint.setFilterBitmap(True); // enable bilinear sampling on scaled bitmaps. If cleared, scaled bitmaps will be drawn with nearest neighbor sampling, likely resulting in artifacts.
-  apaint.setDither(true); // Enabling this flag applies a dither to any blit operation where the target's colour space is more constrained than the source.
-  aPaint.setColor(fBufFontColor);
-  aPaint.setTextSize(fBuffontSize * FScreenScale);
-  if (TFontStyle.fsBold in fBuffontStyle) and
-     (TFontStyle.fsItalic in fBuffontStyle) then aStyle := TJTypeface.JavaClass.BOLD_ITALIC
-  else if (TFontStyle.fsBold in fBuffontStyle) then aStyle := TJTypeface.JavaClass.BOLD
-  else if (TFontStyle.fsItalic in fBuffontStyle) then aStyle := TJTypeface.JavaClass.ITALIC
-  else aStyle := TJTypeface.JavaClass.NORMAL;
-  aTypeface := TJTypeface.JavaClass.create(StringToJString(fBuffontFamily), aStyle);
-  aPaint.setTypeface(aTypeface);
-  aTypeface := nil;
+  //create aOptions
+  aOptions := TALDrawMultiLineTextOptions.Create;
+  Try
 
-  //create the aBreakedTextItems
-  aBreakedTextItems := TalBreakTextItems.Create(true{aOwnsObjects});
-  try
+    //init aOptions
+    aOptions.FontName := fBuffontFamily;
+    aOptions.FontSize := fBuffontSize * FScreenScale;
+    aOptions.FontStyle := fBuffontStyle;
+    aOptions.FontColor := fBufFontColor;
+    //-----
+    //aOptions.EllipsisText: String; // default = '…';
+    //aOptions.EllipsisFontStyle: TFontStyles; // default = [];
+    //aOptions.EllipsisFontColor: TalphaColor; // default = TAlphaColorRec.Null;
+    //-----
+    if (not fBufAutosize) and
+       ((fTextControl.Fill.Kind <> TbrushKind.None) or
+        (fTextControl.stroke.Kind <> TbrushKind.None)) then aOptions.AutoSize := false
+    else aOptions.AutoSize := True;
+    aOptions.WordWrap := fBufWordWrap;
+    //aOptions.MaxLines: integer; // default = 0;
+    aOptions.LineSpacing := fTextControl.LineSpacing * FScreenScale;
+    aOptions.Trimming := fBufTrimming;
+    //aOptions.FirstLineIndent: TpointF; // default = Tpointf.create(0,0);
+    //aOptions.FailIfTextBreaked: boolean; // default = false
+    //-----
+    aOptions.HTextAlign := fBufHorizontalAlign;
+    aOptions.VTextAlign := fBufVerticalAlign;
+    //-----
+    aOptions.Fill.assign(fTextControl.Fill);
+    aOptions.Stroke.assign(fTextControl.Stroke);
+    aOptions.Stroke.Thickness := aOptions.Stroke.Thickness * FScreenScale;
+    aOptions.Sides := fTextControl.Sides;
+    aOptions.XRadius := fTextControl.XRadius * FScreenScale;
+    aOptions.YRadius := fTextControl.YRadius * FScreenScale;
+    aOptions.Corners := fTextControl.Corners;
+    aOptions.Padding := fTextControl.padding.Rect;
+    aOptions.Padding.Top := aOptions.Padding.Top * FScreenScale;
+    aOptions.Padding.right := aOptions.Padding.right * FScreenScale;
+    aOptions.Padding.left := aOptions.Padding.left * FScreenScale;
+    aOptions.Padding.bottom := aOptions.Padding.bottom * FScreenScale;
+    //-----
+    aOptions.TextIsHtml := fTextControl.TextIsHtml;
 
-    //break the text
-    fBufTextBreaked := ALBreakText(aPaint, // const aPaint: JPaint;
-                                   fBufBitmapRect, // var ARect: TRectF;
-                                   StringtoJString(fBufText), // const AText: JString;
-                                   fBufWordWrap, //const aWordWrap: Boolean;
-                                   fBufHorizontalAlign, fBufVerticalAlign, //const AHTextAlign, AVTextAlign: TTextAlign;
-                                   fBufTrimming,
-                                   aBreakedTextItems); // var aBreakedTexts: Tarray<Tpair<JString, TpointF>>);
+    //build fBufBitmap
+    fBufBitmap := ALDrawMultiLineText(fBufText, // const aText: String; // support only basic html tag like <b>...</b>, <i>...</i>, <font color="#ffffff">...</font> and <span id="xxx">...</span>
+                                      fBufBitmapRect, // var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
+                                      fBufTextBreaked,
+                                      aOptions);
+
+    //align fbufBitmapRect
+    if aOptions.AutoSize and (not fBufAutosize) then begin
+      case aOptions.HTextAlign of
+        TTextAlign.Center: begin
+                             fbufBitmapRect.Offset(((fBufSize.cx * FScreenScale) - fbufBitmapRect.width) / 2, 0);
+                           end;
+        TTextAlign.Trailing: begin
+                               fbufBitmapRect.Offset((fBufSize.cx * FScreenScale) - fbufBitmapRect.width, 0);
+                             end;
+      end;
+      case aOptions.VTextAlign of
+        TTextAlign.Center: begin
+                             fbufBitmapRect.Offset(0, ((fBufSize.cy * FScreenScale) - fbufBitmapRect.Height) / 2);
+                           end;
+        TTextAlign.Trailing: begin
+                               fbufBitmapRect.Offset(0, (fBufSize.cy * FScreenScale) - fbufBitmapRect.Height);
+                             end;
+      end;
+    end;
+    if fBufAutosize then fBufBitmapRect.Offset(-fBufBitmapRect.left, -fBufBitmapRect.top);
+
+    //convert fbufBitmapRect do virtual pixel
     fbufBitmapRect.Top := fbufBitmapRect.Top / FScreenScale;
     fbufBitmapRect.right := fbufBitmapRect.right / FScreenScale;
     fbufBitmapRect.left := fbufBitmapRect.left / FScreenScale;
     fbufBitmapRect.bottom := fbufBitmapRect.bottom / FScreenScale;
-    fBufBitmapRect := ALAlignDimensionToPixelCeil(fBufBitmapRect, FScreenScale);
-    if fBufAutosize then fBufBitmapRect.Offset(-fBufBitmapRect.left, -fBufBitmapRect.top);
-    aRect := TrectF.Create(0,0,round((fBufBitmapRect.Width)  * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
-
-    //create the main bitmap on with we will draw
-    aBitmap := TJBitmap.JavaClass.createBitmap(round(max(1, aRect.Width)),  // max because aRect.Width could = 0 if breaked at 1rt char
-                                               round(max(1, aRect.Height)), // max no possible but more beautifull to write like this
-                                               TJBitmap_Config.JavaClass.ARGB_8888);
-    try
-
-      //create the canvas and the paint
-      aCanvas := TJCanvas.JavaClass.init(aBitmap);
-
-      //draw all texts
-      for i := 0 to aBreakedTextItems.count - 1 do begin
-        aBreakedTextItem := aBreakedTextItems[i];
-        aCanvas.drawText(aBreakedTextItem.line{text},
-                         aBreakedTextItem.pos.x {x},
-                         aBreakedTextItem.pos.y {y},
-                         apaint {paint});
-      end;
-
-      //free the paint and the canvas
-      aPaint := nil;
-      aCanvas := nil;
-
-      //init the bitmapSurface that we will use to convert the jbitmap
-      aBitmapSurface := TBitmapSurface.Create;
-      try
-
-        //convert the JBitmapToSurface to the bitmapSurface
-        if JBitmapToSurface(aBitmap, aBitmapSurface) then begin
-
-          //convert the bitmapSurface to a TTexture
-          fBufBitmap := TALTexture.Create(True{aVolatile});
-          try
-            fBufBitmap.Assign(aBitmapSurface);
-          except
-            ALFreeAndNil(fBufBitmap);
-            raise;
-          end;
-
-        end
-        else fBufBitmap := nil;
-
-      finally
-        ALFreeAndNil(abitmapSurface);
-      end;
-
-    finally
-      aBitmap.recycle;
-      aBitmap := nil;
-    end;
 
   finally
-    ALFreeAndNil(aBreakedTextItems);
+    ALFreeAndNil(aOptions);
   end;
 
-  {$ELSEIF DEFINED(IOS)}
-
-  //init the color space
-  aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
-  if aColorSpace = nil then exit(nil);         // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
-  try
-
-    //init fBufBitmapRect / aRect
-    fBufBitmapRect := TRectF.Create(0, 0, fBufSize.cX * FScreenScale, fBufSize.cY * FScreenScale);
-
-    //create the aBreakedTextItems
-    aBreakedTextItems := TALBreakTextItems.Create(true{aOwnsObjects});
-    try
-
-      //break the text
-      fBufTextBreaked := ALBreakText(aColorSpace, // const aColorSpace: CGColorSpaceRef;
-                                     fBufFontColor, //const aFontColor: TalphaColor;
-                                     fBuffontSize * FScreenScale, //const aFontSize: single;
-                                     fBuffontStyle, //const aFontStyle: TFontStyles;
-                                     fBuffontFamily, //const aFontName: String;
-                                     fBufBitmapRect, //var ARect: TRectF;
-                                     fBufText, // const AText: string;
-                                     fBufWordWrap, //const aWordWrap: Boolean;
-                                     fBufHorizontalAlign, fBufVerticalAlign, //const AHTextAlign, AVTextAlign: TTextAlign;
-                                     fBufTrimming, //const aTrimming: TTextTrimming;
-                                     aBreakedTextItems); //var aBreakTextItems: TALBreakTextItems
-      fbufBitmapRect.Top := fbufBitmapRect.Top / FScreenScale;
-      fbufBitmapRect.right := fbufBitmapRect.right / FScreenScale;
-      fbufBitmapRect.left := fbufBitmapRect.left / FScreenScale;
-      fbufBitmapRect.bottom := fbufBitmapRect.bottom / FScreenScale;
-      fBufBitmapRect := ALAlignDimensionToPixelCeil(fBufBitmapRect, FScreenScale);
-      if fBufAutosize then fBufBitmapRect.Offset(-fBufBitmapRect.left, -fBufBitmapRect.top);
-      aRect := TrectF.Create(0,0,round((fBufBitmapRect.Width)  * FScreenScale), round(fBufBitmapRect.height * FScreenScale));
-
-      //create the bitmapSurface
-      aBitmapSurface := TbitmapSurface.Create;
-      try
-
-        //init aBitmapSurface
-        aBitmapSurface.SetSize(round(max(1, aRect.Width)), // max because aRect.Width could = 0 if breaked at 1rt char
-                               round(max(1, aRect.Height))); // max because aRect.height could = 0
-
-
-        //create the context
-        aContext := CGBitmapContextCreate(aBitmapSurface.Bits, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
-                                                               //       memory block should be at least (bytesPerRow*height) bytes.
-                                                               //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
-                                                               //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
-                                          aBitmapSurface.Width, // width: The width, in pixels, of the required bitmap.
-                                          aBitmapSurface.Height, // height: The height, in pixels, of the required bitmap.
-                                          8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
-                                             //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
-                                             //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
-                                             //                   chapter of Quartz 2D Programming Guide.
-                                          aBitmapSurface.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
-                                                                //              a value of 0 causes the value to be calculated automatically.
-                                          aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
-                                                       //             bitmap graphics contexts.
-                                          kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
-                                                                            // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
-                                                                            // kCGImageAlphaPremultipliedNone =  For example, RGB
-                                          kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
-                                                                    // kCGBitmapByteOrder32Little = Little-endian
-                                                                    // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
-                                                                    //             location in a pixel, and information about whether the pixel components are floating-point or integer
-                                                                    //             values. The constants for specifying the alpha channel information are declared with the
-                                                                    //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
-                                                                    //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
-                                                                    //             and CGImageAlphaInfo constants.)
-                                                                    //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
-                                                                    //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
-                                                                    //             Graphics Contexts chapter of Quartz 2D Programming Guide.
-        if aContext = nil then exit(nil);
-        try
-
-          //set the paint default properties
-          CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context. http://stackoverflow.com/questions/5685884/imagequality-with-cgcontextsetinterpolationquality
-          //-----
-          CGContextSetShouldAntialias(aContext, 1); // default: ON
-                                                    // Sets anti-aliasing on or off for a graphics context.
-          CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
-          //-----
-          //CGContextSetShouldSmoothFonts(aContext, 1); // There are cases, such as rendering to a bitmap, when font smoothing is not appropriate and should be disabled.
-                                                        // Note that some contexts (such as PostScript contexts) do not support font smoothing.
-                                                        // -----
-                                                        // Enables or disables font smoothing in a graphics context.
-                                                        // When drawing text on a context attached to a color LCD display, Quartz takes advantage of the nature of
-                                                        // LCD monitors to improve the legibility of text. This technique is called Font Smoothing. The pixels
-                                                        // of an LCD monitor are made up of red, green, and blue sub-pixels. If you take these sub-pixels into
-                                                        // account the screen appears to have three times the resolution commonly attributed to it, at least in
-                                                        // one dimension. Font smoothing takes advantage of this increased resolution to improve the rendering of
-                                                        // text. Quartz turns different sub-pixels off and on by changing the color of a pixels along the edge of
-                                                        // letter shapes. Because your eye expects to see a hard line at the edge of the glyphs, the computer tricks
-                                                        // it into ignoring the color in favor of perceiving a smooth edge. One disadvantage of font smoothing is
-                                                        // that it relies on the fixed ordering of the sub-pixels of an LCD display. That makes the technique of
-                                                        // limited use on other types of monitors. Font smoothing is also of limited use on offscreen bitmaps.
-          //CGContextSetAllowsFontSmoothing(aContext, 1); // Sets whether or not to allow font smoothing for a graphics context.
-          //-----
-          CGContextSetShouldSubpixelPositionFonts(aContext, 1); // default: ON
-                                                                // When enabled, the graphics context may position glyphs on nonintegral pixel boundaries. When disabled,
-                                                                // the position of glyphs are always forced to integral pixel boundaries.
-                                                                // -----
-                                                                // Enables or disables subpixel positioning in a graphics context.
-                                                                // Subpixel positioning concerns whether or not the glyphs in a line of
-                                                                // text will be aligned to pixel boundaries or not. If subpixel positioning is
-                                                                // off then when glyphs are drawn their positions might be shifted slightly to
-                                                                // take pixel boundaries in account. This can improve the visual definition of
-                                                                // the glyphs (making them slightly less "blurry") at the expense of honoring
-                                                                // the font metrics.
-          CGContextSetAllowsFontSubpixelPositioning(aContext, 1); // Sets whether or not to allow subpixel positioning for a graphics context
-          //-----
-          CGContextSetShouldSubpixelQuantizeFonts(aContext, 1); // default: ON
-                                                                // Enables or disables subpixel quantization in a graphics context.
-                                                                // -----
-                                                                // Subpixel quantization is only enabled if subpixel positioning is enabled. Subpixel
-                                                                // quantization improves the rendering of fonts whose glyphs are at subpixel positions
-                                                                // by more closely examining how the shapes that make up the glyphs cover an individual pixel.
-                                                                // This improvement, requires additional processing so changing this value can affect text
-                                                                // drawing performance.
-          CGContextSetAllowsFontSubpixelQuantization(aContext, 1);  // Sets whether or not to allow subpixel quantization for a graphics context
-
-          //draw all texts
-          for i := 0 to aBreakedTextItems.count - 1 do begin
-            aBreakedTextItem := aBreakedTextItems[i];
-            CGContextSetTextPosition(acontext,
-                                     aBreakedTextItem.pos.x {x},
-                                     aBitmapSurface.Height - aBreakedTextItem.pos.Y);{y}
-            CTLineDraw(aBreakedTextItem.Line, acontext); // Draws a complete line.
-          end;
-
-        finally
-          CGContextRelease(aContext);
-        end;
-
-        //convert the aBitmapSurface to texture
-        fBufBitmap := TALTexture.Create(True{aVolatile});
-        try
-          fBufBitmap.Assign(aBitmapSurface);
-        except
-          ALFreeAndNil(fBufBitmap);
-          raise;
-        end;
-
-      finally
-        ALFreeAndNil(aBitmapSurface);
-      end;
-
-    finally
-      ALFreeAndNil(aBreakedTextItems);
-    end;
-
-  finally
-    CGColorSpaceRelease(aColorSpace);
-  end;
-
-  {$ENDIF}
-
+  //update the result
   result := fBufBitmap;
 
   {$IFDEF debug}
@@ -2686,56 +1952,28 @@ begin
   {$endif}
 
 end;
-{$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-procedure TALDoubleBufferedTextLayoutNG.clearBufBitmap;
+{***************************************************}
+procedure TALDoubleBufferedTextLayout.clearBufBitmap;
 begin
   ALFreeAndNil(fBufBitmap);
 end;
-{$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-procedure TALDoubleBufferedTextLayoutNG.DoRenderLayout;
+{***************************************************}
+procedure TALDoubleBufferedTextLayout.DoRenderLayout;
 begin
   MakeBufBitmap; // recreate the fBufBitmap
-  if (fBufBitmap = nil) and
-     (fTextControl.Scene <> nil) and // << fTextControl.Scene = nil mean mostly the fTextControl (or his parent) is not yet assigned to any form so do nothing
-     (not fTextControl.text.IsEmpty) then begin
-    {$IFDEF debug}
-    inc(AlDebugTextInheritedDoRenderLayoutCount);
-    {$endif}
-    inherited DoRenderLayout; // if no fBufBitmap then inherited
-  end;
 end;
-{$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-procedure TALDoubleBufferedTextLayoutNG.DoDrawLayout(const ACanvas: TCanvas);
+{*************************************************************************}
+procedure TALDoubleBufferedTextLayout.DoDrawLayout(const ACanvas: TCanvas);
 var aDestRect: TrectF;
     ADesignatedArea: TrectF;
     aLocation: TPointF;
 begin
 
   MakeBufBitmap;
-
-  if fBufBitmap = nil then begin
-
-    if (fTextControl.Scene = nil) or // << fTextControl.Scene = nil mean mostly the fTextControl (or his parent) is not yet assigned to any form so i don't even know how we can be here !
-       (fTextControl.text.IsEmpty) then exit;
-
-    {$IFDEF debug}
-    inc(AlDebugTextInheritedDoDrawLayoutCount);
-    {$endif}
-
-    inherited DoDrawLayout(ACanvas);
-
-    exit;
-
-  end;
+  if fBufBitmap = nil then exit;
 
   aDestRect := fBufBitmapRect;
   if fBufAutosize then begin
@@ -2763,47 +2001,56 @@ begin
 
   {$ELSE}
 
-  canvas.DrawBitmap(fBufBitmap,
-                    TRectF.Create(0, 0, fBufBitmap.Width, fBufBitmap.Height), {SrcRect}
-                    canvas.AlignToPixel(aDestRect), {DestRect}
-                    AbsoluteOpacity, {opacity}
-                    true{highSpeed});
+  aCanvas.DrawBitmap(fBufBitmap,
+                     TRectF.Create(0, 0, fBufBitmap.Width, fBufBitmap.Height), {SrcRect}
+                     aCanvas.AlignToPixel(aDestRect), {DestRect}
+                     Opacity, {opacity}
+                     true{highSpeed});
 
   {$ENDIF}
 
 end;
-{$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-function TALDoubleBufferedTextLayoutNG.GetTextRect: TRectF;
+{*******************************************************}
+function TALDoubleBufferedTextLayout.GetTextRect: TRectF;
 begin
-  if fBufBitmap = nil then begin
-    if (fTextControl.Scene = nil) or // << fTextControl.Scene = nil mean mostly the fTextControl (or his parent) is not yet assigned to any form so return 0
-       (fTextControl.text.IsEmpty) then result := TrectF.Create(0,0,0,0)
-    else result := inherited GetTextRect  // << if fBufBitmap = nil it's mean last call to DoRenderLayout was inherited
-  end
+  if fBufBitmap = nil then result := TrectF.Create(0,0,0,0)
   else result := fBufBitmapRect;
 end;
-{$ENDIF}
 
-{************************************}
-{$IF defined(android) or defined(IOS)}
-procedure TALDoubleBufferedTextLayoutNG.SetdoubleBuffered(const Value: Boolean);
+{*********************************************************}
+function TALDoubleBufferedTextLayout.GetTextHeight: Single;
 begin
-  if Value <> fDoubleBuffered then begin
-    fDoubleBuffered := value;
-    if not fDoubleBuffered then begin
-      clearbufBitmap;
-      SetNeedUpdate; // << will force to call DoRenderLayout on the next call to RenderLayout
-    end;
-  end;
+  result := 0;
 end;
-{$ENDIF}
+
+{********************************************************}
+function TALDoubleBufferedTextLayout.GetTextWidth: Single;
+begin
+  result := 0;
+end;
+
+{*************************************************************************************}
+function TALDoubleBufferedTextLayout.DoPositionAtPoint(const APoint: TPointF): Integer;
+begin
+  result := 0;
+end;
+
+{***************************************************************************************}
+function TALDoubleBufferedTextLayout.DoRegionForRange(const ARange: TTextRange): TRegion;
+begin
+  setlength(result, 0);
+end;
+
+{**************************************************************************}
+procedure TALDoubleBufferedTextLayout.ConvertToPath(const APath: TPathData);
+begin
+  //do nothing - virtual
+end;
 
 {************************************}
 {$IF DEFINED(IOS) or DEFINED(ANDROID)}
-procedure TALDoubleBufferedTextLayoutNG.OpenGLContextLostHandler(const Sender: TObject; const Msg: TMessage);
+procedure TALDoubleBufferedTextLayout.OpenGLContextLostHandler(const Sender: TObject; const Msg: TMessage);
 begin
   clearBufBitmap;
 end;
@@ -2811,7 +2058,7 @@ end;
 
 {************************************}
 {$IF DEFINED(IOS) or DEFINED(ANDROID)}
-procedure TALDoubleBufferedTextLayoutNG.OpenGLContextResetHandler(const Sender: TObject; const Msg: TMessage);
+procedure TALDoubleBufferedTextLayout.OpenGLContextResetHandler(const Sender: TObject; const Msg: TMessage);
 begin
   clearBufBitmap;
 end;
@@ -2847,13 +2094,21 @@ var LClass: TTextSettingsClass;
 begin
   inherited;
   //-----
+  FFill := TBrush.Create(TBrushKind.none, $FFE0E0E0);
+  FFill.OnChanged := FillChanged;
+  FStroke := TStrokeBrush.Create(TBrushKind.none, $FF000000);
+  FStroke.OnChanged := StrokeChanged;
+  FCorners := AllCorners;
+  FXRadius := 0;
+  FYRadius := 0;
+  FSides := AllSides;
+  fLineSpacing := 0;
+  fTextIsHtml := False;
+  //-----
   HitTest := False;
   //-----
   FAutoConvertFontFamily := True;
   FAutoTranslate := true;
-  {$IF (not DEFINED(IOS)) and (not DEFINED(ANDROID))}
-  fdoubleBuffered := true;
-  {$ENDIF}
   FAutoSize := False;
   fMaxWidth := 65535;
   fMaxHeight := 65535;
@@ -2861,11 +2116,7 @@ begin
   LClass := GetTextSettingsClass;
   if LClass = nil then LClass := TALTextTextSettings;
   //-----
-  {$IF defined(android) or defined(IOS)}
-  FLayout := TALdoubleBufferedTextLayoutNG.Create(nil, self);
-  {$else}
-  FLayout := TTextLayoutManager.DefaultTextLayout.Create;
-  {$endif}
+  FLayout := TALdoubleBufferedTextLayout.Create(nil, self);
   //-----
   //i use this way to know that the compoment
   //will load it's properties from the dfm
@@ -2895,6 +2146,8 @@ destructor TALText.Destroy;
 begin
   ALFreeAndNil(FTextSettings);
   ALFreeAndNil(FLayout);
+  ALFreeAndNil(FStroke);
+  ALFreeAndNil(FFill);
   inherited;
 end;
 
@@ -2915,10 +2168,102 @@ begin
   inherited;
   //-----
   if fRestoreLayoutUpdateAfterLoaded then begin
+    if (FAutoSize) and
+       (Text <> '') then begin
+      if WordWrap then Layout.MaxSize := TPointF.Create(Min(Width, maxWidth), maxHeight)
+      else Layout.MaxSize := TPointF.Create(maxWidth, MaxHeight);
+    end
+    else Layout.MaxSize := TPointF.Create(width, height);  // << this is important because else when the component is loaded then
+                                                           // << we will call DoRenderLayout that will use the original maxsise (ie: 65535, 65535)
+                                                           // << and then after when we will paint the control, we will again call DoRenderLayout
+                                                           // << but this time with maxsize = aTextControl.size and off course if wordwrap we will
+                                                           // << need to redo the bufbitmap
     Layout.endUpdate;
     AdjustSize;
   end;
   fRestoreLayoutUpdateAfterLoaded := False;
+end;
+
+{*********************************************}
+procedure TALText.FillChanged(Sender: TObject);
+begin
+  clearBufBitmap;
+  if FUpdating = 0 then Repaint;
+end;
+
+{***********************************************}
+procedure TALText.StrokeChanged(Sender: TObject);
+begin
+  clearBufBitmap;
+  if FUpdating = 0 then Repaint;
+end;
+
+{*********************************************}
+procedure TALText.SetFill(const Value: TBrush);
+begin
+  FFill.Assign(Value);
+end;
+
+{*****************************************************}
+procedure TALText.SetStroke(const Value: TStrokeBrush);
+begin
+  FStroke.Assign(Value);
+end;
+
+{****************************************}
+function TALText.IsCornersStored: Boolean;
+begin
+  Result := FCorners <> AllCorners;
+end;
+
+{**************************************}
+function TALText.IsSidesStored: Boolean;
+begin
+  Result := FSides * AllSides <> AllSides
+end;
+
+{**************************************************}
+procedure TALText.SetCorners(const Value: TCorners);
+begin
+  if FCorners <> Value then begin
+    FCorners := Value;
+    Repaint;
+  end;
+end;
+
+{************************************************}
+procedure TALText.SetXRadius(const Value: Single);
+var
+  NewValue: Single;
+begin
+  if csDesigning in ComponentState then NewValue := Min(Value, Min(Width / 2, Height / 2))
+  else NewValue := Value;
+  if not SameValue(FXRadius, NewValue, TEpsilon.Vector) then begin
+    FXRadius := NewValue;
+    Repaint;
+  end;
+end;
+
+{************************************************}
+procedure TALText.SetYRadius(const Value: Single);
+var
+  NewValue: Single;
+begin
+  if csDesigning in ComponentState then NewValue := Min(Value, Min(Width / 2, Height / 2))
+  else NewValue := Value;
+  if not SameValue(FYRadius, NewValue, TEpsilon.Vector) then begin
+    FYRadius := NewValue;
+    Repaint;
+  end;
+end;
+
+{**********************************************}
+procedure TALText.SetSides(const Value: TSides);
+begin
+  if FSides <> Value then begin
+    FSides := Value;
+    Repaint;
+  end;
 end;
 
 {***********************************************}
@@ -3246,9 +2591,8 @@ end;
 {*******************************}
 procedure TALText.clearBufBitmap;
 begin
-  {$IF DEFINED(IOS) or DEFINED(ANDROID)}
-  TALDoubleBufferedTextLayoutNG(Layout).clearBufBitmap;
-  {$ENDIF}
+  if not doubleBuffered then exit;
+  TALDoubleBufferedTextLayout(Layout).clearBufBitmap;
 end;
 
 {************************************}
@@ -3258,7 +2602,7 @@ function TALText.MakeBufBitmap: TTexture;
 function TALText.MakeBufBitmap: Tbitmap;
 {$ENDIF}
 begin
-  {$IF DEFINED(IOS) or DEFINED(ANDROID)}
+  if not doubleBuffered then exit(nil);
   FLayout.BeginUpdate;
   try
     FLayout.LayoutCanvas := Self.Canvas;  // useless
@@ -3268,33 +2612,29 @@ begin
   finally
     FLayout.EndUpdate;
   end;
-  result := TALDoubleBufferedTextLayoutNG(Layout).MakeBufBitmap;
-  {$ELSE}
-  result := nil;
-  {$ENDIF}
+  result := TALDoubleBufferedTextLayout(Layout).MakeBufBitmap;
 end;
 
 {******************************************}
 function TALText.GetdoubleBuffered: Boolean;
 begin
-  {$IF DEFINED(IOS) or DEFINED(ANDROID)}
-  result := TALDoubleBufferedTextLayoutNG(Layout).doubleBuffered;
-  {$ELSE}
-  result := fdoubleBuffered;
-  {$ENDIF}
+  result := Layout is TALDoubleBufferedTextLayout;
 end;
 
 {********************************************************}
 procedure TALText.SetdoubleBuffered(const Value: Boolean);
+var aText: String;
 begin
-  {$IF DEFINED(IOS) or DEFINED(ANDROID)}
   if value <> doubleBuffered  then begin
-    TALDoubleBufferedTextLayoutNG(Layout).doubleBuffered := value;
+    aText := fLayout.Text;
+    ALFreeAndNil(fLayout);
+    if value then fLayout := TALdoubleBufferedTextLayout.Create(nil, self)
+    else fLayout := TTextLayoutManager.DefaultTextLayout.Create;
+    if fRestoreLayoutUpdateAfterLoaded then Layout.BeginUpdate;
+    FontChanged;
+    FLayout.Text := aText;
     AdjustSize;
   end;
-  {$ELSE}
-  fdoubleBuffered := Value;
-  {$ENDIF}
 end;
 
 {************************************}
@@ -3304,11 +2644,8 @@ function TALText.GetBufBitmap: TTexture;
 function TALText.GetBufBitmap: Tbitmap;
 {$ENDIF}
 begin
-  {$IF DEFINED(IOS) or DEFINED(ANDROID)}
-  result := TALDoubleBufferedTextLayoutNG(Layout).fBufBitmap;
-  {$ELSE}
-  result := nil;
-  {$ENDIF}
+  if not doubleBuffered then exit(nil);
+  result := TALDoubleBufferedTextLayout(Layout).fBufBitmap;
 end;
 
 {****************************}
@@ -3390,12 +2727,13 @@ end;
 
 procedure Register;
 begin
-  RegisterComponents('Alcinoe', [TALRectangle, TALCircle, TALLine, TALText]);
+  RegisterComponents('Alcinoe', [TALImage, TALRectangle, TALCircle, TALLine, TALText]);
 end;
 
 initialization
-  RegisterFmxClasses([TALRectangle, TALCircle, TALLine, TALText]);
+  RegisterFmxClasses([TALImage, TALRectangle, TALCircle, TALLine, TALText]);
   {$IFDEF debug}
+  AlDebugImageMakeBufBitmapStopWatch := TstopWatch.Create;
   AlDebugRectangleMakeBufBitmapStopWatch := TstopWatch.Create;
   AlDebugCircleMakeBufBitmapStopWatch := TstopWatch.Create;
   AlDebugLineMakeBufBitmapStopWatch := TstopWatch.Create;
