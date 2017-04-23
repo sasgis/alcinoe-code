@@ -96,6 +96,10 @@ interface
   {$ENDIF}
 {$ENDIF}
 
+{$IF Low(string) = 0}
+  {$DEFINE _ZEROBASEDSTRINGS_ON}
+{$ENDIF}
+
 // http://docwiki.embarcadero.com/RADStudio/en/Conditional_compilation_(Delphi)
 // http://docwiki.embarcadero.com/RADStudio/en/Compiler_Versions
 {$IFDEF CPUX86}
@@ -106,7 +110,7 @@ interface
 {$ENDIF !CPUX86}
 
 {$IF SizeOf(Extended) = 10}
-  {$DEFINE EXTENDEDIS10BYTES}
+  {$DEFINE EXTENDEDHAS10BYTES}
 {$ENDIF}
 
 {$IFDEF ANDROID}
@@ -548,6 +552,7 @@ Function  ALIsSmallInt (const S: AnsiString): Boolean;
 Function  ALIsFloat (const S: AnsiString; const AFormatSettings: TALFormatSettings): Boolean;
 function  ALFloatToStr(Value: Extended; const AFormatSettings: TALFormatSettings): AnsiString; overload;
 procedure ALFloatToStr(Value: Extended; var S: ansiString; const AFormatSettings: TALFormatSettings); overload;
+function  ALFloatToStrF(Value: Extended; Format: TFloatFormat; Precision, Digits: Integer; const AFormatSettings: TALFormatSettings): AnsiString;
 function  ALCurrToStr(Value: Currency; const AFormatSettings: TALFormatSettings): AnsiString;
 function  ALFormatFloat(const Format: AnsiString; Value: Extended; const AFormatSettings: TALFormatSettings): AnsiString;
 function  ALFormatCurr(const Format: AnsiString; Value: Currency; const AFormatSettings: TALFormatSettings): AnsiString;
@@ -651,6 +656,11 @@ var       ALBase64EncodeStringU: function(const S: String; const AEncoding: TEnc
 var       ALBase64DecodeStringU: function(const S: String; const AEncoding: TEncoding = nil): String;
 var       ALBase64EncodeBytesU: function(const Bytes: Tbytes): String;
 var       ALBase64DecodeBytesU: function(const S: String): Tbytes;
+function  ALIsDecimalU(const S: String; const RejectPlusMinusSign: boolean = False): boolean;
+Function  ALIsInt64U(const S: String): Boolean;
+Function  ALIsIntegerU(const S: String): Boolean;
+Function  ALIsSmallIntU(const S: String): Boolean;
+Function  ALIsFloatU(const S: String; const AFormatSettings: TALFormatSettingsU): Boolean;
 function  ALFloatToStrU(Value: Extended; const AFormatSettings: TALFormatSettingsU): String; overload; inline;
 procedure ALFloatToStrU(Value: Extended; var S: String; const AFormatSettings: TALFormatSettingsU); overload; inline;
 var       ALCurrToStrU: function(Value: Currency; const AFormatSettings: TALFormatSettingsU): string;
@@ -861,6 +871,16 @@ function  ALGetStringFromFileU(const filename: String; const ADefaultEncoding: T
 procedure ALSaveStringtoFileU(const Str: String; const filename: String; AEncoding: TEncoding; const WriteBOM: boolean = False);
 function  ALRandomStrU(const aLength: Longint; const aCharset: Array of Char): String; overload;
 function  ALRandomStrU(const aLength: Longint): String; overload;
+function  ALHTTPDecodeU(const AStr: String): String;
+{$WARN SYMBOL_DEPRECATED OFF}
+procedure ALExtractHeaderFieldsWithQuoteEscapedU(Separators,
+                                                 WhiteSpace,
+                                                 Quotes: TSysCharSet;
+                                                 Content: PChar;
+                                                 Strings: TALStringsU;
+                                                 HttpDecode: Boolean;
+                                                 StripQuotes: Boolean = False);
+{$WARN SYMBOL_DEPRECATED ON}
 
 {$IFNDEF NEXTGEN}
 Const cAlUTF8Bom = ansiString(#$EF) + ansiString(#$BB) + ansiString(#$BF);
@@ -2486,8 +2506,10 @@ begin
   raise EConvertError.CreateRes(ResString);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALFormatError(ErrorCode: Integer; Format: PChar; FmtLen: Cardinal);
 const
   FormatErrorStrs: array[0..1] of PResStringRec = (
@@ -2503,8 +2525,10 @@ begin
   ALConvertErrorFmt(FormatErrorStrs[ErrorCode], [PChar(@Buffer)]);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALAnsiFormatError(ErrorCode: Integer; Format: PAnsiChar; FmtLen: Cardinal);
 var
   FormatText: string;
@@ -2513,8 +2537,10 @@ begin
   ALFormatError(ErrorCode, PChar(FormatText), FmtLen);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALFormatVarToStr(var S: AnsiString; const V: TVarData);
 begin
   if Assigned(System.VarToLStrProc) then
@@ -2523,15 +2549,21 @@ begin
     System.Error(reVarInvalidOp);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALFormatClearStr(var S: AnsiString);
 begin
   S := '';
 end;
 
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
+{$IF not defined(ANDROID) and not defined(LINUX64) and not Defined(CPUARM)}
 {$IFDEF PIC}
-{******************************************}
 { Do not remove export or the begin block. }
 function ALGetGOT: Pointer; export;
 begin
@@ -2540,13 +2572,16 @@ begin
   end;
 end;
 {$ENDIF}
+{$IFEND ANDROID}
 
 {***}
 const
   cALDCon10: Integer = 10;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$IFDEF X86ASM}
 procedure ALPutExponent;
 // Store exponent
@@ -2623,8 +2658,10 @@ asm //StackAlignSafe - internal method can be called unaligned
 end;
 {$ENDIF X86ASM}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$IFDEF PUREPASCAL}
 function ALInternalFloatToText(
   ABuffer: PByte;
@@ -2636,11 +2673,11 @@ function ALInternalFloatToText(
   const AFormatSettings: TALFormatSettings): Integer;
 const
   CMinExtPrecision = 2;
-{$IFDEF EXTENDEDIS10BYTES}
+{$IFDEF EXTENDEDHAS10BYTES}
   CMaxExtPrecision = 18;
-{$ELSE !EXTENDEDIS10BYTES}
+{$ELSE !EXTENDEDHAS10BYTES}
   CMaxExtPrecision = 17;
-{$ENDIF EXTENDEDIS10BYTES}
+{$ENDIF EXTENDEDHAS10BYTES}
 
   CCurrPrecision = 19;
   CGenExpDigits = 9999;
@@ -2862,11 +2899,11 @@ begin
 
   { Decode the float }
   FloatToDecimal(FloatRec, AValue, AValueType, APrecision, LDigits);
-{$IFDEF EXTENDEDIS10BYTES}
+{$IFDEF EXTENDEDHAS10BYTES}
   LExponent := UInt16(FloatRec.Exponent) - $7FFF;
-{$ELSE !EXTENDEDIS10BYTES}
+{$ELSE !EXTENDEDHAS10BYTES}
   LExponent := UInt16(Int16(FloatRec.Exponent) - $7FF);
-{$ENDIF EXTENDEDIS10BYTES}
+{$ENDIF EXTENDEDHAS10BYTES}
 
   { Check for INF or NAN}
   if LExponent < 2 then
@@ -3011,8 +3048,10 @@ begin
 end;
 {$ENDIF PUREPASCAL}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALFloatToText(BufferArg: PAnsiChar; const Value; ValueType: TFloatValue;
   Format: TFloatFormat; Precision, Digits: Integer;
   const AFormatSettings: TALFormatSettings): Integer;
@@ -3408,8 +3447,10 @@ end;
 {$ENDIF X86ASM}
 {$ENDIF !PUREPASCAL}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$IFDEF X86ASM}
 procedure ALCvtInt;
 { IN:
@@ -3465,8 +3506,10 @@ asm // StackAlignSafe
 end;
 {$ENDIF X86ASM}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$IFDEF X86ASM}
 procedure ALCvtInt64;
 { IN:
@@ -3567,8 +3610,10 @@ asm //StackAlignSafe
 end;
 {$ENDIF X86ASM}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALFormatBuf(var Buffer; BufLen: Cardinal; const Format;
   FmtLen: Cardinal; const Args: array of const;
   const AFormatSettings: TALFormatSettings): Cardinal; overload;
@@ -4363,7 +4408,8 @@ asm
         MOV    ECX, [EBX].DefaultSystemCodePage
         MOV    ECX, [ECX]
 {$ELSE !PIC}
-        MOV    ECX, DefaultSystemCodePage  // maybe we must use 0 instead of DefaultSystemCodePage because if not we receive the error Need imported data reference ($G) to access DefaultSystemCodePage when we compile the dpk
+        //MOV    ECX, DefaultSystemCodePage  // >> we must use CP_UTF8 instead of DefaultSystemCodePage because if not we receive the error Need imported data reference ($G) to access DefaultSystemCodePage when we compile the dpk.
+        MOV    ECX, CP_UTF8
 {$ENDIF}
         CALL   ESI
         POP    ECX
@@ -4509,7 +4555,10 @@ begin
   Result := ALFormatBuf(Buffer, BufLen, Format, FmtLen, Args, ALDefaultFormatSettings);
 end;
 
-{******************************************************************}
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALFmtStr(var Result: AnsiString; const Format: AnsiString;
   const Args: array of const; const AFormatSettings: TALFormatSettings);
 var
@@ -4769,8 +4818,10 @@ begin
 end;
 {$ENDIF MACOS}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALDateTimeToString(var Result: AnsiString; const Format: AnsiString;
   DateTime: TDateTime; const AFormatSettings: TALFormatSettings);
 var
@@ -5332,8 +5383,10 @@ end;
 type
   TALDateOrder = (doMDY, doDMY, doYMD);
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALScanBlanks(const S: AnsiString; var Pos: Integer);
 var
   I: Integer;
@@ -5343,8 +5396,10 @@ begin
   Pos := I;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALScanNumber(const S: AnsiString; var Pos: Integer;
   var Number: Word; var CharCount: Byte): Boolean;
 var
@@ -5370,8 +5425,10 @@ begin
   end;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALScanString(const S: AnsiString; var Pos: Integer;
   const Symbol: AnsiString): Boolean;
 begin
@@ -5388,8 +5445,10 @@ begin
   end;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALScanChar(const S: AnsiString; var Pos: Integer; Ch: AnsiChar): Boolean;
 begin
   Result := False;
@@ -5401,8 +5460,10 @@ begin
   end;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALGetDateOrder(const DateFormat: AnsiString): TALDateOrder;
 var
   I: Integer;
@@ -5424,8 +5485,10 @@ begin
   end;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 procedure ALScanToNumber(const S: AnsiString; var Pos: Integer);
 begin
   while (Pos <= High(S)) and not (S[Pos] in ['0'..'9']) do
@@ -5437,8 +5500,10 @@ begin
   end;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALScanDate(const S: AnsiString; var Pos: Integer; var Date: TDateTime;
   const AFormatSettings: TALFormatSettings): Boolean; overload;
 var
@@ -5466,10 +5531,6 @@ var
   end;
 
 begin
-  Y := 0;
-  M := 0;
-  D := 0;
-  YearLen := 0;
   Result := False;
   DateOrder := ALGetDateOrder(AFormatSettings.ShortDateFormat);
   EraYearOffset := 0;
@@ -5492,7 +5553,7 @@ begin
     case DateOrder of
       doMDY: begin Y := N3; YearLen := L3; M := N1; D := N2; end;
       doDMY: begin Y := N3; YearLen := L3; M := N2; D := N1; end;
-      doYMD: begin Y := N1; YearLen := L1; M := N2; D := N3; end;
+      else{doYMD:} begin Y := N1; YearLen := L1; M := N2; D := N3; end;
     end;
     if EraYearOffset > 0 then
       Y := EraToYear(Y)
@@ -5534,8 +5595,10 @@ begin
   Result := TryEncodeDate(Y, M, D, Date);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALScanTime(const S: AnsiString; var Pos: Integer; var Time: TDateTime;
   const AFormatSettings: TALFormatSettings): Boolean; overload;
 var
@@ -5616,8 +5679,10 @@ begin
     ALConvertErrorFmt(@System.SysConst.SInvalidTime, [S]);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALTryStrToDateTime(const S: AnsiString; out Value: TDateTime;
   const AFormatSettings: TALFormatSettings): Boolean;
 var
@@ -5721,8 +5786,10 @@ begin
     ALConvertErrorFmt(@System.SysConst.SInvalidDateTime, [S]);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 // Hex : ( '$' | 'X' | 'x' | '0X' | '0x' ) [0-9A-Fa-f]*
 // Dec : ( '+' | '-' )? [0-9]*
 function _ALValLong(const S: ansiString; var Code: Integer): Integer;
@@ -5738,8 +5805,10 @@ begin
   I := FirstIndex;
   Sign := False;
   Result := 0;
-  {$IF not (defined(CPUX64) and not defined(EXTERNALLINKER))}
-  Dig := 0;
+  {$IF CompilerVersion < 32} // tokyo
+    {$IF not (defined(CPUX64) and not defined(EXTERNALLINKER))}
+    Dig := 0;
+    {$IFEND}
   {$IFEND}
   Empty := True;
 
@@ -5965,8 +6034,10 @@ asm
 end;
 {$ENDIF}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function _ALValInt64(const s: AnsiString; var code: Integer): Int64;
 const
   FirstIndex = Low(ansistring);
@@ -5979,8 +6050,10 @@ begin
   I := FirstIndex;
   Sign := False;
   Result := 0;
-  {$IF not (defined(CPUX64) and not defined(EXTERNALLINKER))}
-  Dig := 0;
+  {$IF CompilerVersion < 32} // tokyo
+    {$IF not (defined(CPUX64) and not defined(EXTERNALLINKER))}
+    Dig := 0;
+    {$IFEND}
   {$IFEND}
   Empty := True;
 
@@ -6056,8 +6129,10 @@ begin
     Code := 0;
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function _ALValUInt64(const s: ansistring; var code: Integer): UInt64;
 const
   FirstIndex = Low(ansistring);
@@ -6068,9 +6143,11 @@ var
   empty: Boolean;
 begin
   i := FirstIndex;
-  // avoid E1036: Variable 'dig' might not have been initialized
-  {$IF not (defined(CPUX64) and not defined(EXTERNALLINKER))}
-  dig := 0;
+  {$IF CompilerVersion < 32} // tokyo
+    // avoid E1036: Variable 'dig' might not have been initialized
+    {$IF not (defined(CPUX64) and not defined(EXTERNALLINKER))}
+    dig := 0;
+    {$IFEND}
   {$IFEND}
   Result := 0;
   if s = '' then
@@ -6108,7 +6185,7 @@ begin
         Break;
       if sign and (dig <> 0) then
         Break;
-      Result := Result shl 4 + dig;
+      Result := Result shl 4 + Cardinal(dig);
       Inc(i);
       empty := False;
     end;
@@ -6122,11 +6199,15 @@ begin
       else
         break;
       end;
-      if Result > (High(UInt64) div 10) then
-        Break;
+                // 18446744073709551615
+      if Result >= 1844674407370955161 then
+      begin
+        if (Result > 1844674407370955161) or (High(UInt64) - Result*10 < dig) then
+          Break
+      end;
       if sign and (dig <> 0) then
         Break;
-      Result := Result*10 + dig;
+      Result := Result*10 + Cardinal(dig);
       Inc(i);
       empty := False;
     end;
@@ -6205,8 +6286,10 @@ const
      '80','81','82','83','84','85','86','87','88','89',
      '90','91','92','93','94','95','96','97','98','99');
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function _ALIntToStr32(Value: Cardinal; Negative: Boolean): AnsiString;
 var
   I, J, K : Cardinal;
@@ -6248,8 +6331,10 @@ begin
     PAnsiChar(P)^ := AnsiChar(I or ord(AnsiChar('0')));
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function _ALIntToStr64(Value: UInt64; Negative: Boolean): AnsiString;
 var
   I64, J64, K64      : UInt64;
@@ -6457,13 +6542,13 @@ end;
 {*********************************************}
 function ALUIntToStrU(Value: Cardinal): String;
 begin
-Result := UIntToStr(Value);
+  Result := UIntToStr(Value);
 end;
 
 {*******************************************}
 function ALUIntToStrU(Value: UInt64): String;
 begin
-Result := UIntToStr(Value);
+  Result := UIntToStr(Value);
 end;
 
 {$IFNDEF NEXTGEN}
@@ -6786,7 +6871,7 @@ begin
     for I := length(Str) downto 1 do begin
       J := Lst.IndexOf(Str[I]);
       if J < 0 then raise EALException.CreateFmt('Character (%s) not found in charset', [Str[I]]);
-      result := result + (int64(Lst.Objects[J]) * P);
+      result := result + (Uint64(Lst.Objects[J]) * P);
       P := P * BaseIn;
     end;
 
@@ -6841,7 +6926,7 @@ Function  ALIsFloat (const S: AnsiString; const AFormatSettings: TALFormatSettin
 var i: integer;
     aDouble: Double;
 begin
-  for i := 1 to length(S) do begin
+  for i := low(s) to high(s) do begin
     if not (S[i] in ['0'..'9','-',AFormatSettings.DecimalSeparator]) then begin
       result := false;
       exit;
@@ -6868,7 +6953,75 @@ begin
     ffGeneral, 15, 0, AFormatSettings));
 end;
 
+{***************************************************************************************************}
+function ALFloatToStrF(Value: Extended; Format: TFloatFormat;
+  Precision, Digits: Integer; const AFormatSettings: TALFormatSettings): AnsiString;
+var
+  Buffer: array[0..63] of AnsiChar;
+begin
+  SetString(Result, Buffer, ALFloatToText(Buffer, Value, fvExtended,
+    Format, Precision, Digits, AFormatSettings));
+end;
+
 {$ENDIF !NEXTGEN}
+
+{***************************}
+{$WARN SYMBOL_DEPRECATED OFF}
+function ALIsDecimalU(const S: String; const RejectPlusMinusSign: boolean = False): boolean;
+var i: integer;
+begin
+  result := true;
+  for i := low(s) to high(S) do begin
+    if (not RejectPlusMinusSign) and (i=low(s)) then begin
+      if not CharInSet(S[i], ['0'..'9','-','+']) then begin
+        result := false;
+        break;
+      end;
+    end
+    else if not CharInSet(S[i], ['0'..'9']) then begin
+      result := false;
+      break;
+    end;
+  end;
+end;
+{$WARN SYMBOL_DEPRECATED ON}
+
+{**********************************************}
+Function ALIsIntegerU(const S: String): Boolean;
+var i: integer;
+Begin
+  result := ALIsDecimalU(S) and ALTryStrToIntU(S, i);
+End;
+
+{********************************************}
+Function ALIsInt64U(const S: String): Boolean;
+var i : int64;
+Begin
+  Result := ALIsDecimalU(S) and ALTryStrToInt64U(S, I);
+End;
+
+{***********************************************}
+Function ALIsSmallIntU(const S: String): Boolean;
+var i : Integer;
+Begin
+  Result := ALIsDecimalU(S) and ALTryStrToIntU(S, I) and (i <= 32767) and (I >= -32768);
+End;
+
+{***************************}
+{$WARN SYMBOL_DEPRECATED OFF}
+Function  ALIsFloatU(const S: String; const AFormatSettings: TALFormatSettingsU): Boolean;
+var i: integer;
+    aDouble: Double;
+begin
+  for i := low(s) to high(s) do begin
+    if not CharInSet(S[i], ['0'..'9','-',AFormatSettings.DecimalSeparator]) then begin
+      result := false;
+      exit;
+    end;
+  end;
+  result := ALTryStrToFloatU(s,aDouble,AFormatSettings);
+end;
+{$WARN SYMBOL_DEPRECATED ON}
 
 {****************************************************************************************}
 function ALFloatToStrU(Value: Extended; const AFormatSettings: TALFormatSettingsU): String;
@@ -6893,8 +7046,10 @@ begin
     ffGeneral, 0, 0, AFormatSettings));
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 const
 // 8087/SSE status word masks
   mIE = $0001;
@@ -6927,8 +7082,10 @@ const
   MXCSRNear: UInt32 = $1F80;
 {$ENDIF CPUX64}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$IFDEF CPUX86}
 function ALTestAndClearFPUExceptions(AExceptionMask: Word): Boolean;
 asm
@@ -6949,8 +7106,10 @@ asm
 end;
 {$ENDIF CPUX86}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$WARN SYMBOL_PLATFORM OFF}
 {$IFDEF CPUX64}
 function ALTestAndClearSSEExceptions(AExceptionMask: UInt32): Boolean;
@@ -6964,8 +7123,10 @@ end;
 {$ENDIF CPUX64}
 {$WARN SYMBOL_PLATFORM ON}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 //this function is not threadsafe because of Set8087CW
 //!! this is amazing !!
 {$WARN SYMBOL_PLATFORM OFF}
@@ -6974,11 +7135,11 @@ function ALInternalTextToExtended(
   var AValue: Extended;
   const AFormatSettings: TALFormatSettings): Boolean;
 const
-{$IFDEF EXTENDEDIS10BYTES}
+{$IFDEF EXTENDEDHAS10BYTES}
   CMaxExponent = 4999;
-{$ELSE !EXTENDEDIS10BYTES}
+{$ELSE !EXTENDEDHAS10BYTES}
   CMaxExponent = 1024;
-{$ENDIF EXTENDEDIS10BYTES}
+{$ENDIF EXTENDEDHAS10BYTES}
 
   CExponent = 'E'; // DO NOT LOCALIZE;
   CPlus = '+';     // DO NOT LOCALIZE;
@@ -7171,15 +7332,17 @@ begin
 end;
 {$WARN SYMBOL_PLATFORM ON}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 //this function is not threadsafe because of Set8087CW
 //!! this is amazing !!
 function ALInternalTextToCurrency(
   ABuffer: PansiChar;
   var AValue: Currency;
   const AFormatSettings: TALFormatSettings): Boolean;
-{$IFDEF EXTENDEDIS10BYTES}
+{$IFDEF EXTENDEDHAS10BYTES}
 const
   CMaxExponent = 4999;
   CExponent = 'E'; // DO NOT LOCALIZE;
@@ -7334,7 +7497,7 @@ begin
 {$ENDIF CPUX86}
 {$ENDIF NEXTGEN}
 end;
-{$ELSE !EXTENDEDIS10BYTES}
+{$ELSE !EXTENDEDHAS10BYTES}
 const
   CExponent = 'E'; // DO NOT LOCALIZE;
   CPlus = '+';     // DO NOT LOCALIZE;
@@ -7465,10 +7628,12 @@ begin
     end;
   end;
 end;
-{$ENDIF EXTENDEDIS10BYTES}
+{$ENDIF EXTENDEDHAS10BYTES}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$WARN SYMBOL_DEPRECATED OFF}
 function ALTextToFloat(Buffer: PAnsiChar; var Value;
   ValueType: TFloatValue; const AFormatSettings: TALFormatSettings): Boolean;
@@ -7653,18 +7818,20 @@ end;
 {$ENDIF !PUREPASCAL}
 {$WARN SYMBOL_DEPRECATED ON}
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 {$IFDEF PUREPASCAL}
 function InternalFloatToTextFmt(Buf: PByte; const Value; ValueType: TFloatValue; Format: PByte;
   const AFormatSettings: TALFormatSettings; const Unicode: Boolean): Integer;
 const
   CMinExtPrecision = 2;
-{$IFDEF EXTENDEDIS10BYTES}
+{$IFDEF EXTENDEDHAS10BYTES}
   CMaxExtPrecision = 18;
-{$ELSE !EXTENDEDIS10BYTES}
+{$ELSE !EXTENDEDHAS10BYTES}
   CMaxExtPrecision = 17;
-{$ENDIF EXTENDEDIS10BYTES}
+{$ENDIF EXTENDEDHAS10BYTES}
 
 var
   AIndex: Integer;
@@ -8058,7 +8225,9 @@ var
               end;
               PutExponent(OldC, Sign, Zeros, FloatValue.Exponent - DecimalIndex);
             end;
-          end;
+          end
+          else
+            AppendChar(OldC);
         end;
 
         else
@@ -8140,8 +8309,10 @@ begin
     AFormatSettings);
 end;
 
-{********************}
-//delphi seattle upd 1
+{************************}
+{$IF CompilerVersion > 32} // tokyo
+  {$MESSAGE WARN 'Check if function is still the same and adjust the IFDEF'}
+{$IFEND}
 function ALFloatToTextFmt(Buf: PAnsiChar; const Value; ValueType: TFloatValue;
   Format: PAnsiChar; const AFormatSettings: TALFormatSettings): Integer;
 {$IFDEF PUREPASCAL}
@@ -11913,6 +12084,162 @@ Begin
 end;
 
 {$ENDIF}
+
+{************************************************************}
+//the difference between this function and the delphi function
+//HttpApp.HttpDecode is that this function will not raise any
+//error (EConvertError) when the url will contain % that
+//are not encoded
+function ALHTTPDecodeU(const AStr: String): String;
+var Sp, Rp, Cp, Tp: PChar;
+    int: integer;
+    S: String;
+begin
+  SetLength(Result, Length(AStr));
+  Sp := PChar(AStr);
+  Rp := PChar(Result);
+  while Sp^ <> #0 do begin
+    case Sp^ of
+      '+': Rp^ := ' ';
+      '%': begin
+             Tp := Sp;
+             Inc(Sp);
+
+             //escaped % (%%)
+             if Sp^ = '%' then Rp^ := '%'
+
+             // %<hex> encoded character
+             else begin
+               Cp := Sp;
+               Inc(Sp);
+               if (Cp^ <> #0) and (Sp^ <> #0) then begin
+                 S := Char('$') + Char(Cp^) + Char(Sp^);
+                 if ALTryStrToIntU(s,int) then Rp^ := Char(int)
+                 else begin
+                   Rp^ := '%';
+                   Sp := Tp;
+                 end;
+               end
+               else begin
+                 Rp^ := '%';
+                 Sp := Tp;
+               end;
+             end;
+           end;
+      else Rp^ := Sp^;
+    end;
+    Inc(Rp);
+    Inc(Sp);
+  end;
+  SetLength(Result, Rp - PChar(Result));
+end;
+
+{**************************************************************************************}
+{same as ALExtractHeaderFields except the it take care or escaped quote (like '' or "")}
+{$ZEROBASEDSTRINGS OFF} // << the guy who introduce zero base string in delphi is just a mix of a Monkey and a Donkey !
+{$WARN SYMBOL_DEPRECATED OFF}
+procedure ALExtractHeaderFieldsWithQuoteEscapedU(Separators,
+                                                 WhiteSpace,
+                                                 Quotes: TSysCharSet;
+                                                 Content: PChar;
+                                                 Strings: TALStringsU;
+                                                 HttpDecode: Boolean;
+                                                 StripQuotes: Boolean = False);
+
+var Head, Tail, NextTail: PChar;
+    EOS, InQuote: Boolean;
+    QuoteChar: Char;
+    ExtractedField: String;
+    SeparatorsWithQuotesAndNulChar: TSysCharSet;
+    QuotesWithNulChar: TSysCharSet;
+
+  {-------------------------------------------------------}
+  //as i don't want to add the parameter namevalueseparator
+  //to the function, we will stripquote only if the string end
+  //with the quote or start with the quote
+  //ex: "name"="value"  =>  name=value
+  //ex: "name"=value    =>  name=value
+  //ex: name="value"    =>  name=value
+  function DoStripQuotes(const S: String): String;
+  var I: Integer;
+      StripQuoteChar: Char;
+      canStripQuotesOnLeftSide: boolean;
+  begin
+    Result := S;
+    if StripQuotes then begin
+
+      canStripQuotesOnLeftSide := True;
+      if (length(result) > 0) and charInSet(result[length(result)], quotes) then begin
+        StripQuoteChar := result[length(result)];
+        Delete(Result, length(result), 1);
+        i := Length(Result);
+        while i > 0 do begin
+          if (Result[I] = StripQuoteChar) then begin
+            Delete(Result, I, 1);
+            if (i > 1) and (Result[I-1] = StripQuoteChar) then dec(i)
+            else begin
+              canStripQuotesOnLeftSide := i > 1;
+              break;
+            end;
+          end;
+          dec(i);
+        end;
+      end;
+
+      if (canStripQuotesOnLeftSide) and (length(result) > 0) and charInSet(result[1], quotes) then begin
+        StripQuoteChar := result[1];
+        Delete(Result, 1, 1);
+        i := 1;
+        while i <= Length(Result) do begin
+          if (Result[I] = StripQuoteChar) then begin
+            Delete(Result, I, 1);
+            if (i < Length(Result)) and (Result[I+1] = StripQuoteChar) then inc(i)
+            else break;
+          end;
+          inc(i);
+        end;
+      end;
+
+    end;
+  end;
+
+Begin
+  if (Content = nil) or (Content^ = #0) then Exit;
+  SeparatorsWithQuotesAndNulChar := Separators + Quotes + [#0];
+  QuotesWithNulChar := Quotes + [#0];
+  Tail := Content;
+  QuoteChar := #0;
+  repeat
+    while charInSet(Tail^, WhiteSpace) do Inc(Tail);
+    Head := Tail;
+    InQuote := False;
+    while True do begin
+      while (InQuote and not charInSet(Tail^, QuotesWithNulChar)) or not charInSet(Tail^, SeparatorsWithQuotesAndNulChar) do Inc(Tail);
+      if charInSet(Tail^, Quotes) then begin
+        if (QuoteChar <> #0) and (QuoteChar = Tail^) then begin
+          NextTail := Tail + 1;
+          if NextTail^ = Tail^ then inc(tail)
+          else QuoteChar := #0;
+        end
+        else If QuoteChar = #0 then QuoteChar := Tail^;
+        InQuote := QuoteChar <> #0;
+        Inc(Tail);
+      end
+      else Break;
+    end;
+    EOS := Tail^ = #0;
+    if Head^ <> #0 then begin
+      SetString(ExtractedField, Head, Tail-Head);
+      if HttpDecode then Strings.Add(ALHTTPDecodeU(DoStripQuotes(ExtractedField)))
+      else Strings.Add(DoStripQuotes(ExtractedField));
+    end;
+    Inc(Tail);
+  until EOS;
+end;
+{$WARN SYMBOL_DEPRECATED ON}
+{$IF defined(_ZEROBASEDSTRINGS_ON)}
+  {$ZEROBASEDSTRINGS ON}
+{$IFEND}
 
 {*******************************}
 Procedure ALStringInitialization;

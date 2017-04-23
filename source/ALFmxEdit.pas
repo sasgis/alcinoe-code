@@ -113,6 +113,8 @@ type
     FSoftInputListener: TALSoftInputListener;
     FKeyPreImeListener: TALKeyPreImeListener;
     FFocusChangeListener: TALFocusChangeListener;
+    fFormActivateMessageID: integer;
+    fFormDeactivateMessageID: integer;
     fApplicationEventMessageID: integer;
     fReturnKeyType: TReturnKeyType;
     fKeyboardType: TVirtualKeyboardType;
@@ -135,7 +137,9 @@ type
     function getText: String;
     procedure SetText(const Value: String);
     procedure OnFontChanged(Sender: TObject);
-    procedure ApplicationEventHandler(const Sender : TObject; const M : TMessage);
+    procedure FormActivateHandler(const Sender: TObject; const M: TMessage);
+    procedure FormDeactivateHandler(const Sender: TObject; const M: TMessage);
+    procedure ApplicationEventHandler(const Sender: TObject; const M : TMessage);
   protected
     FEditText: JALEditText;
     procedure AncestorVisibleChanged(const Visible: Boolean); override;
@@ -219,7 +223,6 @@ type
   TALIosEdit = class(TControl)
   private
     fOnChangeTracking: TNotifyEvent;
-    FAttributedString: NSMutableAttributedString;
     FTextSettings: TTextSettings;
     procedure setKeyboardType(const Value: TVirtualKeyboardType);
     function GetKeyboardType: TVirtualKeyboardType;
@@ -235,7 +238,7 @@ type
     procedure SetTextSettings(const Value: TTextSettings);
     function getText: String;
     procedure SetText(const Value: String);
-    procedure DoFontChanged(const aText: String);
+    procedure DoFontChanged;
     procedure OnFontChanged(Sender: TObject);
   protected
     FTextField: TALIosTextField;
@@ -363,6 +366,7 @@ uses {$IF defined(android)}
      Androidapi.Input,
      Androidapi.KeyCodes,
      Androidapi.JNI.App,
+     Androidapi.JNI.Util,
      FMX.Platform,
      FMX.Platform.Android,
      FMX.Helpers.Android,
@@ -413,6 +417,8 @@ begin
   else FScreenScale := 1;
   //-----
   CanFocus := True;
+  fFormActivateMessageID := TMessageManager.DefaultManager.SubscribeToMessage(TFormActivateMessage, FormActivateHandler);
+  fFormDeactivateMessageID := TMessageManager.DefaultManager.SubscribeToMessage(TFormDeactivateMessage, FormDeActivateHandler);
   fApplicationEventMessageID := TMessageManager.DefaultManager.SubscribeToMessage(TApplicationEventMessage, ApplicationEventHandler);
   fOnChangeTracking := nil;
   FTextSettings := TALEditTextSettings.Create(Self);
@@ -426,7 +432,7 @@ begin
       FLayout.setfocusable(true);               // << this is important to remove the focus from the FeditText
       FLayout.setfocusableInTouchMode(true);    //    else fedittext will always receive back the focus after we remove it
       //-----
-      {$IF CompilerVersion > 31}
+      {$IF CompilerVersion > 32} // tokyo
         {$MESSAGE WARN 'Check if viewStack.java in classes.dex is still the same as the version in delphi berlin 10.1 and adjust the IFDEF'}
       {$ENDIF}
       MainActivity.getViewStack.addview(FLayout); // << this will add the view
@@ -517,6 +523,8 @@ begin
   ALLog('TALAndroidEdit.Destroy', 'start', TalLogType.VERBOSE);
   {$ENDIF}
 
+  TMessageManager.DefaultManager.Unsubscribe(TFormActivateMessage, fFormActivateMessageID);
+  TMessageManager.DefaultManager.Unsubscribe(TFormDeactivateMessage, fFormDeactivateMessageID);
   TMessageManager.DefaultManager.Unsubscribe(TApplicationEventMessage, fApplicationEventMessageID);
   TUIThreadCaller.ForceRunnablesCollection;
   TUIThreadCaller.Call<JALEditText, JALControlHostLayout>(
@@ -977,8 +985,7 @@ begin
     begin
       //-----
       feditText.setTextColor(ftextsettings.fontcolor); // << Sets the text color for all the states (normal, selected, focused) to be this color.
-      feditText.setTextSize(ftextsettings.font.size); // << Set the default text size to the given value, interpreted as "scaled pixel" units.
-                                                      //    This size is adjusted based on the current density and user font size preference.
+      feditText.setTextSize(TJTypedValue.javaclass.COMPLEX_UNIT_DIP, ftextsettings.font.size); // << Set the default text size to a given unit and value.
       //-----
       if (TFontStyle.fsBold in ftextsettings.font.style) and
          (TFontStyle.fsItalic in ftextsettings.font.style) then aStyle := TJTypeface.JavaClass.BOLD_ITALIC
@@ -1057,6 +1064,18 @@ begin
   if isfocused and
      (M is TApplicationEventMessage) and
      ((M as TApplicationEventMessage).Value.Event = TApplicationEvent.EnteredBackground) then resetfocus;
+end;
+
+{*************************************************************************************}
+procedure TALAndroidEdit.FormActivateHandler(const Sender: TObject; const M: TMessage);
+begin
+  RealignContent;
+end;
+
+{***************************************************************************************}
+procedure TALAndroidEdit.FormDeactivateHandler(const Sender: TObject; const M: TMessage);
+begin
+  RealignContent;
 end;
 
 {*******************************************************************************************}
@@ -1384,7 +1403,6 @@ begin
   fOnChangeTracking := nil;
   FTextSettings := TALEditTextSettings.Create(Self);
   FTextSettings.OnChanged := OnFontChanged;
-  FAttributedString := nil;
   FTextField := TalIosTextField.create(self);
   SetReturnKeyType(tReturnKeyType.Default);
   SetKeyboardType(TVirtualKeyboardType.default);
@@ -1396,7 +1414,6 @@ end;
 destructor TalIosEdit.Destroy;
 begin
   ALfreeandNil(FTextField);
-  if FAttributedString <> nil then FAttributedString.release;
   ALFreeAndNil(FTextSettings);
   inherited Destroy;
 end;
@@ -1510,65 +1527,57 @@ end;
 {************************************************}
 procedure TalIosEdit.SetText(const Value: String);
 begin
-  if (FAttributedString = nil) or (FAttributedString.length = 0) then DoFontChanged(Value)
-  else begin
-    FAttributedString.replaceCharactersInRange(NSMakeRange(0, FAttributedString.length), StrToNSStr(Value));
-    FTextField.View.setAttributedText(FAttributedString);
-  end;
+  FTextField.View.setText(StrToNSStr(Value));
 end;
 
-{******************************************************}
-procedure TalIosEdit.DoFontChanged(const aText: String);
-var aTextRange: NSRange;
+{*********************************}
+procedure TalIosEdit.DoFontChanged;
+var aDictionary: NSDictionary;
     aFontRef: CTFontRef;
-    aUnderline: CFNumberRef;
-    aValue: Cardinal;
 begin
-
-  if FAttributedString <> nil then begin
-    FAttributedString.release;
-    FAttributedString := nil;
-  end;
-  FAttributedString := TNSMutableAttributedString.Alloc;
-  FAttributedString := TNSMutableAttributedString.Wrap(FAttributedString.initWithString(StrToNSStr(aText)));
-
-  FAttributedString.beginEditing;
-  try
-    aTextRange := NSMakeRange(0, aText.Length);
 
     //Font
     aFontRef := ALGetCTFontRef(fTextSettings.Font.Family, fTextSettings.Font.Size, fTextSettings.Font.Style);
-    if aFontRef <> nil then
+    if aFontRef <> nil then begin
       try
-        FAttributedString.addAttribute(TNSString.Wrap(kCTFontAttributeName), aFontRef, aTextRange);
+
+        aDictionary := TNSDictionary.Wrap(
+                         TNSDictionary.OCClass.dictionaryWithObject(
+                           aFontRef,
+                           (TNSString.Wrap(kCTFontAttributeName) as ILocalObject).GetObjectID));
+        FTextField.View.setdefaultTextAttributes(aDictionary); // << Setting this property applies the specified attributes to the entire
+                                                               // << text of the text field. Unset attributes maintain their default values.
+                                                               // << note: seam that i can't later call aDictionary.release or i have an error
+
+        //i need to put this also in the aDictionary elso but i don't know yet how to put in
+        //aDictionary more than one item ... and sincerely i don't need fsUnderline !!
+        //var aUnderline: CFNumberRef;
+        //    aValue: Cardinal;
+        //if TFontStyle.fsUnderline in fTextSettings.Font.Style then begin
+        //  aValue := kCTUnderlineStyleSingle;
+        //  aUnderline := CFNumberCreate(nil, kCFNumberSInt32Type, @aValue);
+        //  try
+        //    FAttributedString.addAttribute(TNSString.Wrap(kCTUnderlineStyleAttributeName), aUnderline, aTextRange);
+        //  finally
+        //    CFRelease(aUnderline);
+        //  end;
+        //end;
+
       finally
         CFRelease(aFontRef);
       end;
-
-    //Font style
-    if TFontStyle.fsUnderline in fTextSettings.Font.Style then begin
-      aValue := kCTUnderlineStyleSingle;
-      aUnderline := CFNumberCreate(nil, kCFNumberSInt32Type, @aValue);
-      try
-        FAttributedString.addAttribute(TNSString.Wrap(kCTUnderlineStyleAttributeName), aUnderline, aTextRange);
-      finally
-        CFRelease(aUnderline);
-      end;
     end;
 
-  finally
-    FAttributedString.endEditing;
-  end;
+    //TextAlignment and TextColor
+    FTextField.View.setTextAlignment(TextAlignToUITextAlignment(fTextSettings.HorzAlign));
+    FTextField.View.setTextColor(AlphaColorToUIColor(fTextSettings.FontColor));
 
-  FTextField.View.setAttributedText(FAttributedString);
-  FTextField.View.setTextAlignment(TextAlignToUITextAlignment(fTextSettings.HorzAlign));
-  FTextField.View.setTextColor(AlphaColorToUIColor(fTextSettings.FontColor));
 end;
 
 {**************************************************}
 procedure TalIosEdit.OnFontChanged(Sender: TObject);
 begin
-  DoFontChanged(text);
+  DoFontChanged;
 end;
 
 {*************************************************}
