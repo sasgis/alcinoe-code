@@ -24,6 +24,7 @@ uses System.classes,
      System.Generics.Collections,
      System.Math.Vectors,
      {$IF defined(ios)}
+     iOSapi.Foundation,
      iOSapi.CoreGraphics,
      iOSapi.CocoaTypes,
      iOSapi.CoreText,
@@ -41,34 +42,6 @@ uses System.classes,
      FMX.graphics,
      FMX.Effects,
      FMX.controls;
-
-  {*******************}
-  {$IFDEF AUTOREFCOUNT}
-
-  type
-
-    // One of the very very rare advantage i found to AUTOREFCOUNT
-    // i use this control to detect from a procedure like
-    //
-    //   tthread.queue(nil,
-    //   procedure
-    //   begin
-    //     if not fLifeObj.alive then exit;
-    //   end);
-    //
-    // that the calling object or anything else is still alive
-    // this object will be free when noone will reference it (all
-    // the queue methode have been executed)
-    // when the object is not alive anymore we simply say
-    // fLifeObj.alive := False;
-    TALLifeObj = class(Tobject)
-    public
-      alive: boolean;
-      constructor Create; virtual;
-      destructor Destroy; override;
-    end;
-
-  {$ENDIF}
 
 type
 
@@ -397,6 +370,7 @@ function  ALAlignDimensionToPixelRound(const Rect: TRectF): TRectF; overload;
 function  ALAlignDimensionToPixelCeil(const Rect: TRectF; const Scale: single): TRectF; overload;
 function  ALAlignDimensionToPixelCeil(const Dimension: single; const Scale: single): single; overload;
 function  ALAlignDimensionToPixelCeil(const Rect: TRectF): TRectF; overload;
+function  ALAlignToPixelRound(const Rect: TRectF): TRectF;
 function  ALRectFitInto(const R: TRectf; const Bounds: TRectf; const CenterAt: TpointF; out Ratio: Single): TRectF; overload;
 function  ALRectFitInto(const R: TRectf; const Bounds: TRectf; const CenterAt: TpointF): TRectF; overload;
 
@@ -450,6 +424,21 @@ function  ALLoadResizeAndFitResourceImageV3(const aResName: String; const W, H: 
 function  ALLoadResizeAndFitFileImageV1(const aFileName: String; const W, H: single): Tbitmap;
 function  ALLoadResizeAndFitFileImageV2(const aFileName: String; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
 function  ALLoadResizeAndFitFileImageV3(const aFileName: String; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+//-----
+function  ALResizeAndStretchImageV1(const aStream: TCustomMemoryStream; const aGetDestSizeFunct: TALResizeImageGetDestSizeFunct): Tbitmap; overload;
+function  ALResizeAndStretchImageV1(const aStream: TCustomMemoryStream; const W, H: single): Tbitmap; overload;
+function  ALResizeAndStretchImageV2(const aStream: TCustomMemoryStream; const aGetDestSizeFunct: TALResizeImageGetDestSizeFunct): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND}; overload;
+function  ALResizeAndStretchImageV2(const aStream: TCustomMemoryStream; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND}; overload;
+function  ALResizeAndStretchImageV3(const aStream: TCustomMemoryStream; const aGetDestSizeFunct: TALResizeImageGetDestSizeFunct{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF}; overload;
+function  ALResizeAndStretchImageV3(const aStream: TCustomMemoryStream; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF}; overload;
+//-----
+function  ALLoadResizeAndStretchResourceImageV1(const aResName: String; const W, H: single): Tbitmap;
+function  ALLoadResizeAndStretchResourceImageV2(const aResName: String; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
+function  ALLoadResizeAndStretchResourceImageV3(const aResName: String; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+//-----
+function  ALLoadResizeAndStretchFileImageV1(const aFileName: String; const W, H: single): Tbitmap;
+function  ALLoadResizeAndStretchFileImageV2(const aFileName: String; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
+function  ALLoadResizeAndStretchFileImageV3(const aFileName: String; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
 
 
 {$IF defined(IOS)}
@@ -482,6 +471,7 @@ type
     fontColor: TalphaColor; // << not initialised by ALBreakText
     fontStyle: integer; // << not initialised by ALBreakText
     id: string; // << not initialised by ALBreakText
+    imgSrc: string; // << not initialised by ALBreakText
     isEllipsis: Boolean;
     constructor Create;
     destructor Destroy; override;
@@ -497,6 +487,7 @@ function ALBreakText(const aPaint: JPaint;
                      const aTrimming: TTextTrimming;
                      const aBreakTextItems: TALBreakTextItems;
                      var aTotalLines: integer;
+                     var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                      const aFirstLineIndent: TpointF;
                      const aLineSpacing: single = 0;
                      const aEllipsisText: JString = nil;
@@ -534,6 +525,7 @@ type
     fontColor: TalphaColor; // << not initialised by ALBreakText
     fontStyle: TFontStyles; // << not initialised by ALBreakText
     id: string; // << not initialised by ALBreakText
+    imgSrc: string; // << not initialised by ALBreakText
     isEllipsis: Boolean;
     constructor Create;
     destructor Destroy; override;
@@ -553,6 +545,7 @@ function ALBreakText(const aColorSpace: CGColorSpaceRef;
                      const aTrimming: TTextTrimming; // TTextTrimming.word not yet supported - TTextTrimming.character will be used instead (if someone need, it's not really hard to implement)
                      const aBreakTextItems: TALBreakTextItems;
                      var aTotalLines: integer;
+                     var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                      const aFirstLineIndent: TpointF;// kCTParagraphStyleSpecifierFirstLineHeadIndent must also have been set with aFirstLineIndent.x in aTextAttr
                      const aLineSpacing: single = 0; // kCTParagraphStyleSpecifierLineSpacingAdjustment must also have been set with aLineSpacing in aTextAttr
                      const aEllipsisText: string = '…';
@@ -599,6 +592,7 @@ type
     fontColor: TalphaColor; // << not initialised by ALBreakText
     fontStyle: TFontStyles; // << not initialised by ALBreakText
     id: string; // << not initialised by ALBreakText
+    imgSrc: string; // << not initialised by ALBreakText
     isEllipsis: Boolean;
     constructor Create;
   end;
@@ -622,6 +616,7 @@ function ALBreakText(const aFontColor: TalphaColor;
                      const aTrimming: TTextTrimming; // TTextTrimming.word not yet supported - TTextTrimming.character will be used instead (if someone need, it's not really hard to implement)
                      const aBreakTextItems: TALBreakTextItems;
                      var aTotalLines: integer;
+                     var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                      const aFirstLineIndent: TpointF;// kCTParagraphStyleSpecifierFirstLineHeadIndent must also have been set with aFirstLineIndent.x in aTextAttr
                      const aLineSpacing: single = 0; // kCTParagraphStyleSpecifierLineSpacingAdjustment must also have been set with aLineSpacing in aTextAttr
                      const aEllipsisText: string = '…';
@@ -675,12 +670,22 @@ type
     Padding: TRectF;  // default = 0
     //-----
     TextIsHtml: boolean; // default = false;
+                         // NOTE: it's a partial html implementation, just for styling like <b>, <font color="">, etc.
+                         //       For exemple #13#10 are handle like breakline and not like space
     //-----
     constructor Create;
     destructor Destroy; override;
   End;
 
-{~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+{~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+// their is a bug, if you write something like: abcd#13#10<b>abcd</b>
+// then you will obtain
+//     abcd(<b>)abcd(</b>)
+// instead of
+//     abcd(#13#10)
+//     (<b>)abcd(</b>)
+// the workaround is to write instead abcd<b>#13#10abcd</b>
+// not look very hard to correct but i have no time to do it right now
 function  ALDrawMultiLineText(const aText: String; // support only theses EXACT html tag :
                                                    //   <b>...</b>
                                                    //   <i>...</i>
@@ -688,13 +693,24 @@ function  ALDrawMultiLineText(const aText: String; // support only theses EXACT 
                                                    //   <span id="xxx">...</span>
                                                    // other < > must be encoded with &lt; and &gt;
                               var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
-                              var aTextBreaked: boolean; // out => true is the text was "breaked" in several lines
+                              var aTextBreaked: boolean; // out => true if the text was "breaked" in several lines
+                              var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                               var aAscent: single; // out => the Ascent of the last element (in real pixel)
                               var aDescent: Single; // out => the Descent of the last element (in real pixel)
                               var aFirstPos: TpointF; // out => the point of the start of the text
                               var aLastPos: TpointF; // out => the point of the end of the text
                               var aElements: TalTextElements; // out => the list of rect describing all span elements
                               var aEllipsisRect: TRectF; // out => the rect of the Ellipsis (if present)
+                              const aOptions: TALDrawMultiLineTextOptions): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF}; overload;
+function  ALDrawMultiLineText(const aText: String; // support only theses EXACT html tag :
+                                                   //   <b>...</b>
+                                                   //   <i>...</i>
+                                                   //   <font color="#xxxxxx">...</font>
+                                                   //   <span id="xxx">...</span>
+                                                   // other < > must be encoded with &lt; and &gt;
+                              var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
+                              var aTextBreaked: boolean; // true is the text was "breaked" in several lines
+                              var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                               const aOptions: TALDrawMultiLineTextOptions): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF}; overload;
 function  ALDrawMultiLineText(const aText: String; // support only theses EXACT html tag :
                                                    //   <b>...</b>
@@ -789,6 +805,16 @@ function ALfontStyleToAndroidStyle(const afontStyle: TfontStyles): integer;
 {$IFEND}
 {$IF defined(ANDROID) or defined(IOS)}
 function ALBitmapSurfacetoTexture(const aBitmapSurface: TbitmapSurface; const aVolatileTexture: boolean = true): TTexture;
+{$IFEND}
+
+{$IF defined(ANDROID)}
+function ALStringsToJArrayList(const AStrings: TArray<String>): JArrayList;
+function ALJSetToStrings(const ASet: JSet): TArray<String>;
+{$IFEND}
+
+{$IF defined(IOS)}
+function ALStringsToNSArray(const AStrings: TArray<String>): NSMutableArray;
+function ALNSSetToStrings(const ANSSet: NSSet): TArray<String>;
 {$IFEND}
 
 Type
@@ -964,23 +990,41 @@ Type
     FMessageId: Integer;
   end;
 
+{$IFDEF ANDROID}
+var ALViewStackCount: integer;
+{$ENDIF}
+
+{$IFDEF ANDROID}
+function ALControlNeedKeyboard(const aControl: IControl): Boolean;
+procedure ALObtainKeyboardRect(var aBounds: TRect);
+{$ENDIF}
+
 implementation
 
 uses system.SysUtils,
      System.Character,
      System.UIConsts,
      System.Math,
+     {$IFDEF DEBUG}
+     system.diagnostics,
+     {$ENDIF}
      {$IF defined(ANDROID)}
      Androidapi.JNIBridge,
      Androidapi.Helpers,
      Androidapi.JNI.Os,
      Androidapi.Bitmap,
+     Androidapi.JNI.OpenGL,
+     Androidapi.Gles2,
+     FMX.Context.GLES,
+     FMX.Context.GLES.Android,
      FMX.Helpers.Android,
+     FMX.platForm.android,
      ALFmxTypes3D,
+     alFmxEdit,
      {$IFEND}
      {$IF defined(IOS)}
      iOSapi.UIKit,
-     iOSapi.Foundation,
+     Macapi.ObjectiveC,
      Macapi.CoreFoundation,
      Macapi.Helpers,
      ALFmxTypes3D,
@@ -992,24 +1036,6 @@ uses system.SysUtils,
      ALStringList,
      ALString,
      AlCommon;
-
-{*******************}
-{$IFDEF AUTOREFCOUNT}
-constructor TALLifeObj.Create;
-begin
-  aLive := True;
-end;
-{$ENDIF}
-
-{*******************}
-{$IFDEF AUTOREFCOUNT}
-destructor TALLifeObj.Destroy;
-begin
-  {$IF defined(DEBUG)}
-  ALLog('TALLifeObj.Destroy', 'TALLifeObj.Destroy', TalLogType.verbose);
-  {$IFEND}
-end;
-{$ENDIF}
 
 {***************************}
 constructor TALShadow.Create;
@@ -2238,6 +2264,15 @@ begin
   result.height := ceil(Rect.height - TEpsilon.Vector);
 end;
 
+{********************************************************}
+function  ALAlignToPixelRound(const Rect: TRectF): TRectF;
+begin
+  Result.Left := round(Rect.Left);
+  Result.Top := round(Rect.Top);
+  Result.Right := Result.Left + Round(Rect.Width); // keep ratio horizontally
+  Result.Bottom := Result.Top + Round(Rect.Height); // keep ratio vertically
+end;
+
 {****************}
 {$IF defined(IOS)}
 class function TAlphaColorCGFloat.Create(const R, G, B: CGFloat; const A: CGFloat = 1): TAlphaColorCGFloat;
@@ -2412,6 +2447,7 @@ function ALBreakText(const aPaint: JPaint;
                      const aTrimming: TTextTrimming;
                      const aBreakTextItems: TALBreakTextItems;
                      var aTotalLines: integer;
+                     var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                      const aFirstLineIndent: TpointF;
                      const aLineSpacing: single = 0;
                      const aEllipsisText: JString = nil;
@@ -2525,6 +2561,7 @@ begin
 
   //init result
   result := false;
+  aAllTextDrawed := true;
 
   //init aBreakTextItemsStartCount
   aBreakTextItemsStartCount := aBreakTextItems.Count;
@@ -2618,6 +2655,7 @@ begin
 
           //if not aWordWrap
           if not aWordWrap then begin
+            aAllTextDrawed := False; // aNumberOfChars < aLine.length so in anycase we will not draw all the text
             case aTrimming of
               TTextTrimming.None: begin
                                     if aNumberOfChars > 0 then
@@ -2716,6 +2754,7 @@ begin
                (aTrimming <> TTextTrimming.None) then begin
 
               //-----
+              aAllTextDrawed := False; // if we are at the last line then in anycase we will not draw all the text
               _initEllipsis;
               //-----
               aSaveNumberOfChars := aNumberOfChars;
@@ -2778,6 +2817,12 @@ begin
             //We are not at the last line or aTrimming = TTextTrimming.None
             else begin
 
+              //We are at the last line and aTrimming = TTextTrimming.None and more line available
+              if (aTrimming <> TTextTrimming.None) and
+                 ((compareValue(aCurrLineY + aLineHeight + aMetrics.descent, aMaxHeight, Tepsilon.position) > 0) or
+                  ((aMaxLines > 0) and (aTotalLines >= aMaxLines - 1))) then aAllTextDrawed := False;
+
+              //cut the line
               aSaveNumberOfChars := aNumberOfChars;
               if aNumberOfChars < aLine.length then inc(aNumberOfChars); // in case the space separator is just after aNumberOfChars
               while aNumberOfChars > 0 do begin
@@ -3027,6 +3072,7 @@ function ALBreakText(const aPaint: JPaint;
                      const aEllipsisFontColor: TalphaColor = TAlphaColorRec.Null;
                      const aMaxlines: integer = 0): boolean; // return true if text was breaked in several lines (truncated or not)
 var aTotalLines: integer;
+    aAllTextDrawed: boolean;
 begin
   result := ALBreakText(aPaint, // const aPaint: JPaint;
                         ARect, // var ARect: TRectF;
@@ -3036,6 +3082,7 @@ begin
                         aTrimming, // const aTrimming: TTextTrimming;
                         aBreakTextItems, // const aBreakTextItems: TALBreakTextItems;
                         aTotalLines, // var aTotalLines: integer;
+                        aAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                         aFirstLineIndent, // const aFirstLineIndent: TpointF;
                         aLineSpacing, // const aLineSpacing: single = 0;
                         aEllipsisText, // const aEllipsisText: JString = nil;
@@ -3082,6 +3129,7 @@ function ALBreakText(const aColorSpace: CGColorSpaceRef;
                      const aTrimming: TTextTrimming; // TTextTrimming.word not yet supported - TTextTrimming.character will be used instead (if someone need, it's not really hard to implement)
                      const aBreakTextItems: TALBreakTextItems;
                      var aTotalLines: integer;
+                     var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                      const aFirstLineIndent: TpointF;// kCTParagraphStyleSpecifierFirstLineHeadIndent must also have been set with aFirstLineIndent.x in aTextAttr
                      const aLineSpacing: single = 0; // kCTParagraphStyleSpecifierLineSpacingAdjustment must also have been set with aLineSpacing in aTextAttr
                      const aEllipsisText: string = '…';
@@ -3129,6 +3177,9 @@ var aBreakTextItemsStartCount: integer;
     i: CFIndex;
 
 begin
+
+  //init aAllTextDrawed
+  aAllTextDrawed := True;
 
   //init aBreakTextItemsStartCount
   aBreakTextItemsStartCount := aBreakTextItems.Count;
@@ -3361,6 +3412,7 @@ begin
                   // stop if after maxheight
                   if (compareValue(aCurrLineY + adescent, aMaxHeight, TEpsilon.position) > 0) then begin
                     result := True;
+                    aAllTextDrawed := False;
                     break;
                   end;
 
@@ -3451,6 +3503,7 @@ begin
 
             //init result
             result := True;
+            aAllTextDrawed := False;
 
             //if aTrimming = TTextTrimming.None or aEllipsisAttr = nil then nothing todo
             if (aTrimming <> TTextTrimming.None) and
@@ -3769,7 +3822,15 @@ begin
 
             end;
 
-          end;
+          end
+          else if (aBreakTextItems.Count = aBreakTextItemsStartCount) and  // If no line was added
+                  (not AText.IsEmpty) then begin // and the text was not empty
+
+            //init result
+            result := True;
+            aAllTextDrawed := False;
+
+          end
 
         finally
           CFRelease(aTextAttr);
@@ -3853,6 +3914,7 @@ function ALBreakText(const aColorSpace: CGColorSpaceRef;
                      const aEllipsisFontColor: TalphaColor = TAlphaColorRec.Null;
                      const aMaxlines: integer = 0): boolean; inline; overload; // // return true if text was breaked in several lines (truncated or not)
 var aTotalLines: integer;
+    aAllTextDrawed: boolean;
 begin
   result := ALBreakText(aColorSpace, // const aColorSpace: CGColorSpaceRef;
                         aFontColor, // const aFontColor: TalphaColor;
@@ -3866,6 +3928,7 @@ begin
                         aTrimming, // const aTrimming: TTextTrimming; // TTextTrimming.word not yet supported - TTextTrimming.character will be used instead (if someone need, it's not really hard to implement)
                         aBreakTextItems, // const aBreakTextItems: TALBreakTextItems;
                         aTotalLines, // var aTotalLines: integer;
+                        aAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                         aFirstLineIndent, // const aFirstLineIndent: TpointF;// kCTParagraphStyleSpecifierFirstLineHeadIndent must also have been set with aFirstLineIndent.x in aTextAttr
                         aLineSpacing, // const aLineSpacing: single = 0; // kCTParagraphStyleSpecifierLineSpacingAdjustment must also have been set with aLineSpacing in aTextAttr
                         aEllipsisText, // const aEllipsisText: string = '…';
@@ -3975,6 +4038,7 @@ function ALBreakText(const aFontColor: TalphaColor;
                      const aTrimming: TTextTrimming; // TTextTrimming.word not yet supported - TTextTrimming.character will be used instead (if someone need, it's not really hard to implement)
                      const aBreakTextItems: TALBreakTextItems;
                      var aTotalLines: integer;
+                     var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                      const aFirstLineIndent: TpointF;// kCTParagraphStyleSpecifierFirstLineHeadIndent must also have been set with aFirstLineIndent.x in aTextAttr
                      const aLineSpacing: single = 0; // kCTParagraphStyleSpecifierLineSpacingAdjustment must also have been set with aLineSpacing in aTextAttr
                      const aEllipsisText: string = '…';
@@ -4046,6 +4110,7 @@ begin
 
   //init result
   result := false;
+  aAllTextDrawed := True;
 
   //init aBreakTextItemsStartCount
   aBreakTextItemsStartCount := aBreakTextItems.Count;
@@ -4131,6 +4196,7 @@ begin
 
         //if not aWordWrap
         if not aWordWrap then begin
+          aAllTextDrawed := False; // aNumberOfChars < aLine.length so in anycase we will not draw all the text
           case aTrimming of
             TTextTrimming.None: begin
                                   if aNumberOfChars > 0 then
@@ -4220,6 +4286,7 @@ begin
              (aTrimming <> TTextTrimming.None) then begin
 
             //-----
+            aAllTextDrawed := False; // if we are at the last line then in anycase we will not draw all the text
             _initEllipsis;
             //-----
             aSaveNumberOfChars := aNumberOfChars;
@@ -4276,6 +4343,12 @@ begin
           //We are not at the last line or aTrimming = TTextTrimming.None
           else begin
 
+            //We are at the last line and aTrimming = TTextTrimming.None and more line available
+            if (aTrimming = TTextTrimming.None) and
+               ((compareValue(aCurrLineY + aLineHeight + adescent, aMaxHeight, Tepsilon.position) > 0) or
+                ((aMaxLines > 0) and (aTotalLines >= aMaxLines - 1))) then aAllTextDrawed := False;
+
+            //Cut the line
             aSaveNumberOfChars := aNumberOfChars;
             if aNumberOfChars < aLine.length then inc(aNumberOfChars); // in case the space separator is just after aNumberOfChars
             while aNumberOfChars > 0 do begin
@@ -4551,7 +4624,8 @@ function  ALDrawMultiLineText(const aText: String; // support only theses EXACT 
                                                    //   <span id="xxx">...</span>
                                                    // other < > must be encoded with &lt; and &gt;
                               var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
-                              var aTextBreaked: boolean; // // out => true is the text was "breaked" in several lines
+                              var aTextBreaked: boolean; // out => true if the text was "breaked" in several lines
+                              var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                               var aAscent: single; // out => the Ascent of the last element (in real pixel)
                               var aDescent: Single; // out => the Descent of the last element (in real pixel)
                               var aFirstPos: TpointF; // out => the point of the start of the text
@@ -4560,10 +4634,10 @@ function  ALDrawMultiLineText(const aText: String; // support only theses EXACT 
                               var aEllipsisRect: TRectF; // out => the rect of the Ellipsis (if present)
                               const aOptions: TALDrawMultiLineTextOptions): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
 
-  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
-  procedure _getInfosFromTag(const aTag: String;
+  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+  procedure _getInfosFromTag(const aTag: String; // color="#ffffff" id="xxx"
                              const aSpanIds: TalStringlistU;
-                             const aFontColors: Tlist<TalphaColor>); // tag = <font color="#ffffff" id="xxx">
+                             const aFontColors: Tlist<TalphaColor>);
   var aParamList: TAlStringListU;
       acolorInt: integer;
       S1: String;
@@ -4618,8 +4692,39 @@ function  ALDrawMultiLineText(const aText: String; // support only theses EXACT 
 
   end;
 
+  {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+  procedure _getInfosFromImg(const aTag: String; // src="xxx"
+                             var aSrc: String);
+  var aParamList: TAlStringListU;
+  begin
+
+    if aTag = '' then begin
+      aSrc := '';
+      exit;
+    end;
+
+    aParamList := TALStringListU.Create;
+    try
+
+      ALExtractHeaderFieldsWithQuoteEscapedU([' ', #9, #13, #10],
+                                             [' ', #9, #13, #10],
+                                             ['"', ''''],
+                                             PChar(aTag),
+                                             aParamList,
+                                             False,
+                                             True{StripQuotes});
+
+      aSrc := aParamList.Values['src'];
+
+    finally
+      aParamList.Free;
+    end;
+
+  end;
+
 var {$IF defined(ANDROID)}
     aBitmap: Jbitmap;
+    aImg: Jbitmap;
     aPaint: JPaint;
     aTypeface: JTypeface;
     aCanvas: Jcanvas;
@@ -4628,6 +4733,7 @@ var {$IF defined(ANDROID)}
     {$IFEND}
     {$IF defined(IOS)}
     aBitmapSurface: TbitmapSurface;
+    aImg: CGImageRef;
     aColorSpace: CGColorSpaceRef;
     aContext: CGContextRef;
     aStyle: TfontStyles;
@@ -4635,11 +4741,13 @@ var {$IF defined(ANDROID)}
     {$IFEND}
     {$IF defined(MSWINDOWS) or defined(_MACOS)}
     aStyle: TfontStyles;
+    aImg: Tbitmap;
     {$IFEND}
     aBreakedTextItems: TALBreakTextItems;
     aBreakedTextItem: TALBreakTextItem;
     aBreakedTextItemsCount: integer;
     aCurrText: String;
+    aCurrImgSrc: String;
     aTag: String;
     aBold: integer;
     aItalic: Integer;
@@ -4654,6 +4762,7 @@ var {$IF defined(ANDROID)}
     aTotalLines: integer;
     aTmpTotalLines: integer;
     aTmpTextBreaked: Boolean;
+    aTmpAllTextDrawed: Boolean;
     aCurrentLineY: single;
     aOffset: single;
     P1, P2: integer;
@@ -4663,6 +4772,7 @@ begin
 
   //init out var
   aTextBreaked := false;
+  aAllTextDrawed := True;
   aAscent := 0;
   aDescent := 0;
   aFirstPos := TpointF.Create(0,0);
@@ -4716,6 +4826,8 @@ begin
           if aText[P1] = '<' then begin
 
             //-----
+            aCurrImgSrc := '';
+            aCurrText := '';
             P2 := AlposExU('>', aText, P1+1); // blablabla <font color="#ffffff">bliblibli</font> blobloblo
                                               //           ^P1                  ^P2
             if P2 <= 0 then break;
@@ -4735,7 +4847,13 @@ begin
             end
 
             //-----
-            else if alposU('<i', aTag) = 1 then begin
+            else if alposU('<img', aTag) = 1 then begin // <img src="xxx">
+              _getInfosFromImg(AlcopyStrU(aTag, 6, length(aTag) - 6), aCurrImgSrc);
+              aCurrText := '⬛';
+            end
+
+            //-----
+            else if (alposU('<i', aTag) = 1) then begin
               _getInfosFromTag(AlcopyStrU(aTag, 4, length(aTag) - 4), aSpanIds, aFontColors);
               inc(aItalic)
             end
@@ -4764,10 +4882,12 @@ begin
             end;
 
             //-----
-            continue;
+            if aCurrImgSrc = '' then continue;
 
           end
           else begin
+
+            aCurrImgSrc := '';
             P2 := AlposExU('<', aText, P1);  // blablabla <font color="#ffffff">bliblibli</font> blobloblo
                                              //                                 ^P1      ^P2
             if P2 <= 0 then P2 := Maxint;
@@ -4777,9 +4897,15 @@ begin
             {$IFDEF IOS}
             //because of this http://stackoverflow.com/questions/41334425/ctframesettercreateframe-and-kctparagraphstylespecifierfirstlineheadindent
             if aWhiteSpace then aCurrText := ' ' + aCurrText;
-            if (P2 > 1) and
-               (P2 <= length(aText)) and
-               (aText[P2 - 1].IsWhiteSpace) then begin
+            if (P2 <= length(aText) - 3) and
+               (aText[P2 + 1] = 'i') and
+               (aText[P2 + 2] = 'm') and
+               (aText[P2 + 3] = 'g') then begin
+              aWhiteSpace := False;
+            end
+            else if (P2 > 1) and
+                    (P2 <= length(aText)) and
+                    (aText[P2 - 1].IsWhiteSpace) then begin
               setlength(aCurrText, length(aCurrText) - 1);
               aWhiteSpace := True;
             end
@@ -4861,6 +4987,7 @@ begin
                                            aOptions.Trimming, // const aTrimming: TTextTrimming;
                                            aBreakedTextItems, // var aBreakedTexts: Tarray<Tpair<JString, TpointF>>);
                                            aTmpTotalLines, // var aTotalLines: integer
+                                           aTmpAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                                            aFirstLineIndent, // const aFirstLineIndent: TpointF;
                                            aOptions.LineSpacing, // const aLineSpacing: single = 0;
                                            JStr2, //  const aEllipsisText: JString = nil;
@@ -4883,6 +5010,7 @@ begin
                                            aOptions.Trimming, // const aTrimming: TTextTrimming;
                                            aBreakedTextItems, // const aBreakTextItems: TALBreakTextItems;
                                            aTmpTotalLines, // var aTotalLines: integer;
+                                           aTmpAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                                            aFirstLineIndent, // const aFirstLineIndent: TpointF;
                                            aOptions.LineSpacing, // const aLineSpacing: single = 0;
                                            aOptions.EllipsisText, // const aEllipsisText: string = '…';
@@ -4901,6 +5029,7 @@ begin
                                            aOptions.Trimming, // const aTrimming: TTextTrimming;
                                            aBreakedTextItems, // const aBreakTextItems: TALBreakTextItems;
                                            aTmpTotalLines, // var aTotalLines: integer;
+                                           aTmpAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                                            aFirstLineIndent, // const aFirstLineIndent: TpointF;
                                            aOptions.LineSpacing, // const aLineSpacing: single = 0;
                                            aOptions.EllipsisText, // const aEllipsisText: string = '…';
@@ -4911,6 +5040,13 @@ begin
 
             //handle FailIfTextBreaked
             if aTmpTextBreaked and aOptions.FailIfTextBreaked then begin ARect.Width := 0; ARect.Height := 0; exit(nil); end;
+
+            //update the img
+            if (aCurrImgSrc <> '') and
+               (aBreakedTextItems.Count - aBreakedTextItemsCount = 1) then begin
+              aBreakedTextItem := aBreakedTextItems[aBreakedTextItems.count - 1];
+              aBreakedTextItem.imgsrc := aCurrImgSrc;
+            end;
 
             //if their was not enalf of place to write the ellipsis
             if (aBreakedTextItems.Count >= 2) and                                                                                          // << more than 2 items
@@ -4927,8 +5063,8 @@ begin
 
               //if the ellipsis is not on the same line of the aBreakedTextItem then it's mean
               //we don't have enalf of place on one full row to draw the ellipsis so break the loop
-              if compareValue(aBreakedTextItem.pos.Y,
-                              aBreakedTextItems[aBreakedTextItems.count - 1].pos.y,
+              if compareValue(aBreakedTextItem.rect.Top,  // << we can not use pos.y because on ios bold text can be 1 or 2 pixel more high the normal text :(
+                              aBreakedTextItems[aBreakedTextItems.count - 1].rect.top,
                               Tepsilon.Position) <> 0 then break;
 
               //get the params from aBreakedTextItem
@@ -4971,6 +5107,7 @@ begin
 
           //update aTextBreaked
           aTextBreaked := aTextBreaked or aTmpTextBreaked;
+          aAllTextDrawed := aAllTextDrawed and aTmpAllTextDrawed;
 
           //update all the aBreakedTextItem
           for I := aBreakedTextItemsCount to aBreakedTextItems.Count - 1 do begin
@@ -5013,11 +5150,11 @@ begin
       case aOptions.HTextAlign of
         TTextAlign.Center: begin
                              if aBreakedTextItems.Count > 0 then begin
-                               aCurrentLineY := aBreakedTextItems[0].pos.y;
+                               aCurrentLineY := aBreakedTextItems[0].rect.top; // << we can not use pos.y because on ios bold text can be 1 or 2 pixel more high the normal text :(
                                J := 0;
                                for I := 1 to aBreakedTextItems.Count do begin
                                  if (I = aBreakedTextItems.Count) or
-                                    (compareValue(aCurrentLineY, aBreakedTextItems[I].pos.y, Tepsilon.Position) <> 0) then begin
+                                    (compareValue(aCurrentLineY, aBreakedTextItems[I].rect.top, Tepsilon.Position) <> 0) then begin
                                    aOffset := Floor((aRect.width -
                                                        aBreakedTextItems[I-1].rect.Right -
                                                          aOptions.Padding.Left -
@@ -5027,7 +5164,7 @@ begin
                                      aBreakedTextItems[j].rect.Offset(aOptions.Padding.Left + aOffset, 0);
                                      inc(J);
                                    end;
-                                   if (I <> aBreakedTextItems.Count) then aCurrentLineY := aBreakedTextItems[I].pos.y;
+                                   if (I <> aBreakedTextItems.Count) then aCurrentLineY := aBreakedTextItems[I].rect.top;
                                  end;
                                end;
                              end;
@@ -5040,11 +5177,11 @@ begin
                            end;
         TTextAlign.Trailing: begin
                                if aBreakedTextItems.Count > 0 then begin
-                                 aCurrentLineY := aBreakedTextItems[0].pos.y;
+                                 aCurrentLineY := aBreakedTextItems[0].rect.top; // << we can not use pos.y because on ios bold text can be 1 or 2 pixel more high the normal text :(
                                  J := 0;
                                  for I := 1 to aBreakedTextItems.Count do begin
                                    if (I = aBreakedTextItems.Count) or
-                                      (compareValue(aCurrentLineY, aBreakedTextItems[I].pos.y, Tepsilon.Position) <> 0) then begin
+                                      (compareValue(aCurrentLineY, aBreakedTextItems[I].rect.top, Tepsilon.Position) <> 0) then begin
                                      aOffset := Floor((aRect.width -
                                                          aBreakedTextItems[I-1].rect.Right -
                                                            aOptions.Padding.Left -
@@ -5054,7 +5191,7 @@ begin
                                        aBreakedTextItems[j].rect.Offset(aOptions.Padding.Left + aOffset, 0);
                                        inc(J);
                                      end;
-                                     if (I <> aBreakedTextItems.Count) then aCurrentLineY := aBreakedTextItems[I].pos.y;
+                                     if (I <> aBreakedTextItems.Count) then aCurrentLineY := aBreakedTextItems[I].rect.top;
                                    end;
                                  end;
                                end;
@@ -5140,19 +5277,36 @@ begin
         //draw all texts
         for i := 0 to aBreakedTextItems.count - 1 do begin
           aBreakedTextItem := aBreakedTextItems[i];
+          if aBreakedTextItem.imgSrc <> '' then begin
+            aMaxWidth := min(aBreakedTextItem.rect.Width, aBreakedTextItem.rect.Height);
+            aTmpRect := ALAlignToPixelRound(
+                          TrectF.Create(0,0,aMaxWidth,aMaxWidth).
+                            CenterAt(aBreakedTextItem.rect));
+            aImg := ALLoadResizeAndFitResourceImageV2(aBreakedTextItem.imgSrc, aTmpRect.Width, aTmpRect.Height);
+            if aImg <> nil then begin
+              try
+                aCanvas.drawBitmap(aImg, aTmpRect.left {left}, aTmpRect.top {top}, apaint {paint});
+              finally
+                aImg.recycle;
+                aImg := nil;
+              end;
+            end;
+          end
+          else begin
+            aPaint.setColor(aBreakedTextItem.fontColor);
+            //-----
+            JStr1 := StringToJString(aOptions.FontName); // << https://quality.embarcadero.com/browse/RSP-14187
+            aTypeface := TJTypeface.JavaClass.create(JStr1, aBreakedTextItem.fontStyle);
+            aPaint.setTypeface(aTypeface);
+            aTypeface := nil;
+            JStr1 := nil;
+            //-----
+            aCanvas.drawText(aBreakedTextItem.line{text},
+                             aBreakedTextItem.pos.x {x},
+                             aBreakedTextItem.pos.y {y},
+                             apaint {paint});
+          end;
           //-----
-          aPaint.setColor(aBreakedTextItem.fontColor);
-          //-----
-          JStr1 := StringToJString(aOptions.FontName); // << https://quality.embarcadero.com/browse/RSP-14187
-          aTypeface := TJTypeface.JavaClass.create(JStr1, aBreakedTextItem.fontStyle);
-          aPaint.setTypeface(aTypeface);
-          aTypeface := nil;
-          JStr1 := nil;
-          //-----
-          aCanvas.drawText(aBreakedTextItem.line{text},
-                           aBreakedTextItem.pos.x {x},
-                           aBreakedTextItem.pos.y {y},
-                           apaint {paint});
         end;
 
         //free the paint and the canvas
@@ -5195,10 +5349,31 @@ begin
         //draw all texts
         for i := 0 to aBreakedTextItems.count - 1 do begin
           aBreakedTextItem := aBreakedTextItems[i];
-          CGContextSetTextPosition(acontext,
-                                   aBreakedTextItem.pos.x {x},
-                                   aBitmapSurface.Height - aBreakedTextItem.pos.Y);{y}
-          CTLineDraw(aBreakedTextItem.Line, acontext); // Draws a complete line.
+          if aBreakedTextItem.imgSrc <> '' then begin
+            aMaxWidth := min(aBreakedTextItem.rect.Width, aBreakedTextItem.rect.Height);
+            aTmpRect := ALAlignToPixelRound(
+                          TrectF.Create(0,0,aMaxWidth,aMaxWidth).
+                            CenterAt(aBreakedTextItem.rect));
+            aImg := ALLoadResizeAndFitResourceImageV2(aBreakedTextItem.imgSrc, aTmpRect.Width, aTmpRect.Height);
+            if aImg <> nil then begin
+              Try
+                CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
+                                   ALLowerLeftCGRect(TPointF.Create(aTmpRect.left, aTmpRect.top),
+                                                     aTmpRect.Width,
+                                                     aTmpRect.Height,
+                                                     aBitmapSurface.Height), // rect The location and dimensions in user space of the bounding box in which to draw the image.
+                                   aImg); // image The image to draw.
+              finally
+                CGImageRelease(aImg);
+              End;
+            end;
+          end
+          else begin
+            CGContextSetTextPosition(acontext,
+                                     aBreakedTextItem.pos.x {x},
+                                     aBitmapSurface.Height - aBreakedTextItem.pos.Y);{y}
+            CTLineDraw(aBreakedTextItem.Line, acontext); // Draws a complete line.
+          end;
         end;
 
         //convert the aBitmapSurface to texture
@@ -5243,16 +5418,31 @@ begin
           result.Canvas.Font.size := aOptions.FontSize;
           for i := 0 to aBreakedTextItems.count - 1 do begin
             aBreakedTextItem := aBreakedTextItems[i];
-            //-----
-            result.Canvas.Fill.Color := aBreakedTextItem.fontColor;
-            result.Canvas.Font.style := aBreakedTextItem.fontStyle;
-            //-----
-            result.Canvas.FillText(aBreakedTextItem.rect, // const ARect: TRectF;
-                                   aBreakedTextItem.line, // const AText: string;
-                                   False, // const WordWrap: Boolean;
-                                   1, // const AOpacity: Single;
-                                   [], // const Flags: TFillTextFlags;
-                                   TTextAlign.Leading, TTextAlign.Leading);// const ATextAlign, AVTextAlign: TTextAlign
+            if aBreakedTextItem.imgSrc <> '' then begin
+              aMaxWidth := min(aBreakedTextItem.rect.Width, aBreakedTextItem.rect.Height) * 1.15;
+              aTmpRect := ALAlignToPixelRound(
+                            TrectF.Create(0,0,aMaxWidth,aMaxWidth).
+                              CenterAt(aBreakedTextItem.rect));
+              aImg := ALLoadResizeAndFitResourceImageV2(aBreakedTextItem.imgSrc, aTmpRect.Width, aTmpRect.Height);
+              if aImg <> nil then begin
+                try
+                  result.Canvas.drawBitmap(aImg, TrectF.Create(0,0,aTmpRect.Width,aTmpRect.Height), aTmpRect{DstRect}, 1{AOpacity}, false{HighSpeed});
+                finally
+                  ALFreeAndNil(aImg);
+                end;
+              end;
+            end
+            else begin
+              result.Canvas.Fill.Color := aBreakedTextItem.fontColor;
+              result.Canvas.Font.style := aBreakedTextItem.fontStyle;
+              //-----
+              result.Canvas.FillText(aBreakedTextItem.rect, // const ARect: TRectF;
+                                     aBreakedTextItem.line, // const AText: string;
+                                     False, // const WordWrap: Boolean;
+                                     1, // const AOpacity: Single;
+                                     [], // const Flags: TFillTextFlags;
+                                     TTextAlign.Leading, TTextAlign.Leading);// const ATextAlign, AVTextAlign: TTextAlign
+            end;
           end;
 
         finally
@@ -5291,6 +5481,7 @@ function  ALDrawMultiLineText(const aText: String; // support only theses EXACT 
                                                    // other < > must be encoded with &lt; and &gt;
                               var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
                               var aTextBreaked: boolean; // true is the text was "breaked" in several lines
+                              var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                               const aOptions: TALDrawMultiLineTextOptions): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
 var aAscent: single;
     aDescent: Single;
@@ -5302,6 +5493,38 @@ begin
   result := ALDrawMultiLineText(aText,
                                 aRect, // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
                                 aTextBreaked, // out => true is the text was "breaked" in several lines
+                                aAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
+                                aAscent, // var aAscent: single; // out => the Ascent of the last element (in real pixel)
+                                aDescent, // var aDescent: Single; // out => the Descent of the last element (in real pixel)
+                                aFirstPos, // var aFirstPos: TpointF; // out => the point of the start of the text
+                                aLastPos, // var aLastPos: TpointF; // out => the point of the end of the text
+                                aElements, // var aElements: TalTextElements; // out => the list of rect describing all span elements
+                                aEllipsisRect, // var aEllipsisRect: TRectF; // out => the rect of the Ellipsis (if present)
+                                aOptions);
+end;
+
+{************************************************}
+function  ALDrawMultiLineText(const aText: String; // support only theses EXACT html tag :
+                                                   //   <b>...</b>
+                                                   //   <i>...</i>
+                                                   //   <font color="#xxxxxx">...</font>
+                                                   //   <span id="xxx">...</span>
+                                                   // other < > must be encoded with &lt; and &gt;
+                              var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
+                              var aTextBreaked: boolean; // true is the text was "breaked" in several lines
+                              const aOptions: TALDrawMultiLineTextOptions): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+var aAscent: single;
+    aDescent: Single;
+    aFirstPos: TpointF;
+    aLastPos: TpointF;
+    aElements: TalTextElements;
+    aEllipsisRect: TRectF;
+    aAllTextDrawed: boolean;
+begin
+  result := ALDrawMultiLineText(aText,
+                                aRect, // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
+                                aTextBreaked, // out => true is the text was "breaked" in several lines
+                                aAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                                 aAscent, // var aAscent: single; // out => the Ascent of the last element (in real pixel)
                                 aDescent, // var aDescent: Single; // out => the Descent of the last element (in real pixel)
                                 aFirstPos, // var aFirstPos: TpointF; // out => the point of the start of the text
@@ -5327,10 +5550,12 @@ var aAscent: single;
     aElements: TalTextElements;
     aEllipsisRect: TRectF;
     aTextBreaked: boolean;
+    aAllTextDrawed: boolean;
 begin
   result := ALDrawMultiLineText(aText,
                                 aRect, // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
                                 aTextBreaked, // out => true is the text was "breaked" in several lines
+                                aAllTextDrawed, // var aAllTextDrawed: boolean; // out => true if all the text was drawed (no need of any Ellipsis)
                                 aAscent, // var aAscent: single; // out => the Ascent of the last element (in real pixel)
                                 aDescent, // var aDescent: Single; // out => the Descent of the last element (in real pixel)
                                 aFirstPos, // var aFirstPos: TpointF; // out => the point of the start of the text
@@ -5344,13 +5569,77 @@ end;
 {$IF defined(ANDROID)}
 function ALJBitmaptoTexture(const aBitmap: Jbitmap; const aVolatileTexture: boolean = true): TTexture;
 var aBitmapSurface: TBitmapSurface;
+    Tex: GLuint;
 begin
-  aBitmapSurface := TBitmapSurface.Create;
-  try
-    if JBitmapToSurface(aBitmap, aBitmapSurface) then result := ALBitmapSurfacetoTexture(aBitmapSurface, aVolatileTexture)
-    else result := nil;
-  finally
-    ALFreeAndNil(abitmapSurface);
+  if not aVolatileTexture then begin
+    aBitmapSurface := TBitmapSurface.Create;
+    try
+      if JBitmapToSurface(aBitmap, aBitmapSurface) then result := ALBitmapSurfacetoTexture(aBitmapSurface, aVolatileTexture)
+      else result := nil;
+    finally
+      ALFreeAndNil(abitmapSurface);
+    end;
+  end
+  else begin
+
+    {$IF CompilerVersion > 31} // berlin
+      {$MESSAGE WARN 'Check if the full flow of TTexture.Assign is still the same as below and adjust the IFDEF'}
+    {$IFEND}
+    result := TALTexture.Create(aVolatileTexture);
+    try
+      result.Style := [TTextureStyle.Dynamic, TTextureStyle.Volatile];
+      result.SetSize(aBitmap.getWidth, aBitmap.getHeight);
+      if not (result.IsEmpty) then begin
+        if result.PixelFormat = TPixelFormat.None then result.PixelFormat := TCustomAndroidContext.PixelFormat;
+        TCustomAndroidContext.SharedContext; // >> because stupidly CreateSharedContext is protected :(
+        if TCustomAndroidContext.IsContextAvailable then
+        begin
+          glActiveTexture(GL_TEXTURE0);
+          glGenTextures(1, @Tex);
+          glBindTexture(GL_TEXTURE_2D, Tex);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          case result.MagFilter of
+            TTextureFilter.Nearest: glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            TTextureFilter.Linear: glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+          end;
+          if TTextureStyle.MipMaps in result.Style then
+          begin
+            case result.MinFilter of
+              TTextureFilter.Nearest: glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+              TTextureFilter.Linear: glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            end;
+          end
+          else
+          begin
+            case result.MinFilter of
+              TTextureFilter.Nearest: glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+              TTextureFilter.Linear: glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            end;
+          end;
+          TJGLUtils.JavaClass.texImage2D(GL_TEXTURE_2D, // target: Integer;
+                                         0, // level: Integer;
+                                         aBitmap, // bitmap: JBitmap;
+                                         0); // border: Integer  => glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, Texture.Width, Texture.Height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nil);
+          glBindTexture(GL_TEXTURE_2D, 0);
+          ITextureAccess(result).Handle := Tex;
+          if (TCustomAndroidContext.GLHasAnyErrors()) then
+            RaiseContextExceptionFmt(@SCannotCreateTexture, ['TALTexture']);
+        end;
+      end;
+    except
+      ALFreeAndNil(result);
+      raise;
+    end;
+
+    {$IFDEF DEBUG}
+    if result.PixelFormat <> TPixelFormat.None then AtomicIncrement(TotalMemoryUsedByTextures, result.Width * result.Height * result.BytesPerPixel);
+    if TThread.GetTickCount - AtomicCmpExchange(LastTotalMemoryUsedByTexturesLog, 0, 0) > 1000 then begin // every 1 sec
+      AtomicExchange(LastTotalMemoryUsedByTexturesLog, TThread.GetTickCount); // oki maybe 2 or 3 log can be show simultaneously. i will not died for this !
+      ALLog('TALTexture', 'TotalMemoryUsedByTextures: ' + ALFormatFloatU('0.##', AtomicCmpExchange(TotalMemoryUsedByTextures, 0, 0) / 1000000, ALDefaultFormatSettingsU) +' MB', TalLogType.verbose);
+    end;
+    {$ENDIF}
+
   end;
 end;
 {$IFEND}
@@ -5378,6 +5667,73 @@ begin
   else if (TFontStyle.fsBold in afontStyle) then result := TJTypeface.JavaClass.BOLD
   else if (TFontStyle.fsItalic in afontStyle) then result := TJTypeface.JavaClass.ITALIC
   else result := TJTypeface.JavaClass.NORMAL;
+end;
+{$IFEND}
+
+{********************}
+{$IF defined(ANDROID)}
+function ALStringsToJArrayList(const AStrings: TArray<String>): JArrayList;
+var S: JString;
+    AString: String;
+begin
+  Result := TJArrayList.JavaClass.init(Length(AStrings));
+  for AString in AStrings do begin
+    S := StringToJString(AString);
+    Result.add(S);
+  end;
+end;
+{$IFEND}
+
+{********************}
+{$IF defined(ANDROID)}
+function ALJSetToStrings(const ASet: JSet): TArray<String>;
+var Iterator: JIterator;
+    Index: Integer;
+    S: JString;
+begin
+  SetLength(Result, ASet.size);
+  Index := 0;
+  Iterator := ASet.iterator;
+  while Iterator.hasNext do begin
+    S := TJString.Wrap((Iterator.next as ILocalObject).GetObjectID);
+    if S <> nil then begin
+      Result[Index] := JStringToString(S);
+      Inc(Index);
+    end;
+  end;
+  SetLength(Result, Index);
+end;
+{$IFEND}
+
+{****************}
+{$IF defined(IOS)}
+function ALStringsToNSArray(const AStrings: TArray<String>): NSMutableArray;
+var S: NSString;
+    AString: String;
+begin
+  Result := TNSMutableArray.Create;
+  for AString in AStrings do begin
+    S := StrToNSStr(AString);
+    Result.addObject((S as ILocalObject).GetObjectID);
+  end;
+end;
+{$IFEND}
+
+{****************}
+{$IF defined(IOS)}
+function ALNSSetToStrings(const ANSSet: NSSet): TArray<String>;
+var StringArray: NSArray;
+    AString: String;
+    I: Integer;
+begin
+  if ANSSet <> nil then begin
+    SetLength(Result, ANSSet.count);
+    StringArray := ANSSet.allObjects;
+    for I := 0 to StringArray.Count - 1 do begin
+      AString := NSStrToStr(TNSString.Wrap(StringArray.objectAtIndex(I)));
+      Result[I] := AString;
+    end;
+  end;
 end;
 {$IFEND}
 
@@ -7307,37 +7663,12 @@ function ALResizeAndCropAsCircleImageV3(const aStream: TCustomMemoryStream; cons
 {$REGION ' ANDROID'}
 {$IF defined(ANDROID)}
 var aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
 begin
 
-  //create the aTmpBitmap
   aTmpBitmap := ALResizeAndCropAsCircleImageV2(aStream, W, H, aCropCenter);
   if aTmpBitmap = nil then exit(nil);
   try
-
-    //create the aBitmapSurface
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the aTmpBitmap to the bitmapSurface
-      if JBitmapToSurface(aTmpBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        result := TALTexture.Create(aVolatileTexture);
-        try
-          result.assign(aBitmapSurface);
-        except
-          AlFreeAndNil(result);
-          raise;
-        end;
-
-      end
-      else result := nil;
-
-    finally
-      AlFreeAndNil(abitmapSurface);
-    end;
-
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
   finally
     aTmpBitmap.recycle;
     aTmpBitmap := nil;
@@ -7891,37 +8222,13 @@ function ALResizeAndCropImageV3(const aStream: TCustomMemoryStream; const aGetDe
 {$REGION ' ANDROID'}
 {$IF defined(ANDROID)}
 var aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
 begin
 
   //create the aTmpBitmap
   aTmpBitmap := ALResizeAndCropImageV2(aStream, aGetDestSizeFunct, aCropCenter);
   if aTmpBitmap = nil then exit(nil);
   try
-
-    //create the aBitmapSurface
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the aTmpBitmap to the bitmapSurface
-      if JBitmapToSurface(aTmpBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        result := TALTexture.Create(aVolatileTexture);
-        try
-          result.assign(aBitmapSurface);
-        except
-          ALfreeandNil(result);
-          raise;
-        end;
-
-      end
-      else result := nil;
-
-    finally
-      ALfreeandNil(abitmapSurface);
-    end;
-
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
   finally
     aTmpBitmap.recycle;
     aTmpBitmap := nil;
@@ -8054,37 +8361,13 @@ function ALResizeAndCropImageV3(const aStream: TCustomMemoryStream; const W, H: 
 {$REGION ' ANDROID'}
 {$IF defined(ANDROID)}
 var aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
 begin
 
   //create the aTmpBitmap
   aTmpBitmap := ALResizeAndCropImageV2(aStream, W, H, aCropCenter);
   if aTmpBitmap = nil then exit(nil);
   try
-
-    //create the aBitmapSurface
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the aTmpBitmap to the bitmapSurface
-      if JBitmapToSurface(aTmpBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        result := TALTexture.Create(aVolatileTexture);
-        try
-          result.assign(aBitmapSurface);
-        except
-          ALfreeandNil(result);
-          raise;
-        end;
-
-      end
-      else result := nil;
-
-    finally
-      ALfreeandNil(abitmapSurface);
-    end;
-
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
   finally
     aTmpBitmap.recycle;
     aTmpBitmap := nil;
@@ -8766,37 +9049,13 @@ function ALResizeAndFitImageV3(const aStream: TCustomMemoryStream; const aGetDes
 {$REGION ' ANDROID'}
 {$IF defined(ANDROID)}
 var aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
 begin
 
   //create the aTmpBitmap
   aTmpBitmap := ALResizeAndFitImageV2(aStream, aGetDestSizeFunct);
   if aTmpBitmap = nil then exit(nil);
   try
-
-    //create the aBitmapSurface
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the aTmpBitmap to the bitmapSurface
-      if JBitmapToSurface(aTmpBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        result := TALTexture.Create(aVolatileTexture);
-        try
-          result.assign(aBitmapSurface);
-        except
-          ALfreeandNil(result);
-          raise;
-        end;
-
-      end
-      else result := nil;
-
-    finally
-      ALfreeandNil(abitmapSurface);
-    end;
-
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
   finally
     aTmpBitmap.recycle;
     aTmpBitmap := nil;
@@ -8929,37 +9188,13 @@ function ALResizeAndFitImageV3(const aStream: TCustomMemoryStream; const W, H: s
 {$REGION ' ANDROID'}
 {$IF defined(ANDROID)}
 var aTmpBitmap: Jbitmap;
-    aBitmapSurface: TBitmapSurface;
 begin
 
   //create the aTmpBitmap
   aTmpBitmap := ALResizeAndFitImageV2(aStream, W, H);
   if aTmpBitmap = nil then exit(nil);
   try
-
-    //create the aBitmapSurface
-    aBitmapSurface := TBitmapSurface.Create;
-    try
-
-      //convert the aTmpBitmap to the bitmapSurface
-      if JBitmapToSurface(aTmpBitmap, aBitmapSurface) then begin
-
-        //convert the bitmapSurface to a TTexture
-        result := TALTexture.Create(aVolatileTexture);
-        try
-          result.assign(aBitmapSurface);
-        except
-          ALfreeandNil(result);
-          raise;
-        end;
-
-      end
-      else result := nil;
-
-    finally
-      ALfreeandNil(abitmapSurface);
-    end;
-
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
   finally
     aTmpBitmap.recycle;
     aTmpBitmap := nil;
@@ -9158,7 +9393,761 @@ begin
   end;
 end;
 
+{***************************************************************************************************************************************}
+function ALResizeAndStretchImageV1(const aStream: TCustomMemoryStream; const aGetDestSizeFunct: TALResizeImageGetDestSizeFunct): Tbitmap;
+var aBitmap: TBitmap;
+    aDestSize: TpointF;
+    aDestRect: TrectF;
+    aSrcRect: TrectF;
+    aTmpResult: Tbitmap;
+begin
+
+  {$IF CompilerVersion <= 31} {Delphi berlin}
+  //synchronize because Tbitmap is not multithread
+  Tthread.Synchronize(nil,
+  Procedure
+  begin
+  {$IFEND}
+
+    aBitmap := Tbitmap.CreateFromStream(aStream);
+    try
+
+      aDestSize := aGetDestSizeFunct(TpointF.create(aBitmap.width, aBitmap.height));
+      aSrcRect := TrectF.Create(0, 0, aBitmap.width, aBitmap.height);
+      aDestRect := TrectF.Create(0, 0, aDestSize.x, aDestSize.y);
+
+      aTmpResult := TBitmap.Create(ceil(aDestRect.Width),ceil(aDestRect.Height));
+      try
+
+        aTmpResult.Clear(TAlphaColorRec.Null);
+        if aTmpResult.Canvas.BeginScene then
+        try
+          aTmpResult.Canvas.DrawBitmap(aBitmap, // const ABitmap: TBitmap;
+                                       aSrcRect, //const SrcRect,
+                                       aDestRect, //const DstRect: TRectF;
+                                       1, //const AOpacity: Single;
+                                       false); // const HighSpeed: Boolean => disable interpolation
+        finally
+          aTmpResult.Canvas.EndScene;
+        end;
+
+      except
+        AlFreeAndNil(aTmpResult);
+        raise;
+      end;
+
+    finally
+      AlFreeAndNil(aBitmap);
+    end;
+
+  {$IF CompilerVersion <= 31} {Delphi berlin}
+  end);
+  {$IFEND}
+
+  result := aTmpResult;
+
+end;
+
+{**************************************************************************************************}
+function ALResizeAndStretchImageV1(const aStream: TCustomMemoryStream; const W, H: single): Tbitmap;
+var aBitmap: TBitmap;
+    aDestRect: TrectF;
+    aSrcRect: TrectF;
+    aTmpResult: Tbitmap;
+begin
+
+  {$IF CompilerVersion <= 31} {Delphi berlin}
+  //synchronize because Tbitmap is not multithread
+  Tthread.Synchronize(nil,
+  Procedure
+  begin
+  {$IFEND}
+
+    aBitmap := Tbitmap.CreateFromStream(aStream);
+    try
+
+      aSrcRect := TrectF.Create(0, 0, aBitmap.width, aBitmap.height);
+      aDestRect := TrectF.Create(0, 0, w, h);
+
+      aTmpResult := TBitmap.Create(ceil(aDestRect.Width),ceil(aDestRect.Height));
+      try
+
+        aTmpResult.Clear(TAlphaColorRec.Null);
+        if aTmpResult.Canvas.BeginScene then
+        try
+          aTmpResult.Canvas.DrawBitmap(aBitmap, // const ABitmap: TBitmap;
+                                       aSrcRect, //const SrcRect,
+                                       aDestRect, //const DstRect: TRectF;
+                                       1, //const AOpacity: Single;
+                                       false); // const HighSpeed: Boolean => disable interpolation
+        finally
+          aTmpResult.Canvas.EndScene;
+        end;
+
+      except
+        AlFreeAndNil(aTmpResult);
+        raise;
+      end;
+
+    finally
+      AlFreeAndNil(aBitmap);
+    end;
+
+  {$IF CompilerVersion <= 31} {Delphi berlin}
+  end);
+  {$IFEND}
+
+  result := aTmpResult;
+
+end;
+
+{*******************************************************************************************************************************************************************************************************************}
+function ALResizeAndStretchImageV2(const aStream: TCustomMemoryStream; const aGetDestSizeFunct: TALResizeImageGetDestSizeFunct): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
+
+{$REGION ' ANDROID'}
+{$IF defined(ANDROID)}
+var aArray: TJavaArray<Byte>;
+    aBitmap: Jbitmap;
+    aMatrix: JMatrix;
+    aDestSize: TpointF;
+    aDestRect: TrectF;
+    aSrcRect: Trectf;
+begin
+  aArray := TJavaArray<Byte>.Create(aStream.Size);
+  try
+    system.Move(aStream.Memory^, aArray.Data^, aStream.Size);
+    aBitmap := TJBitmapFactory.JavaClass.decodeByteArray(aArray, 0, aStream.Size);
+    if aBitmap = nil then Exit(nil);
+    try
+      aDestSize := aGetDestSizeFunct(TpointF.create(aBitmap.getwidth, aBitmap.getheight));
+      aSrcRect := TrectF.Create(0, 0, aBitmap.getWidth, aBitmap.getHeight);
+      aDestRect := TrectF.Create(0, 0, aDestSize.x, aDestSize.y);
+      aMatrix := TJMatrix.JavaClass.init;
+      aMatrix.postScale(aDestRect.width/aSrcRect.width, aDestRect.height/aSrcRect.height);
+      result := TJBitmap.JavaClass.createBitmap(aBitmap{src}, round(aSrcRect.Left){X}, round(aSrcRect.top){Y}, round(aSrcRect.width){Width}, round(aSrcRect.height){height}, aMatrix{m}, True{filter});
+      aMatrix := nil;
+    finally
+      if not aBitmap.sameAs(result) then aBitmap.recycle;
+      aBitmap := nil;
+    end;
+  finally
+    ALfreeandNil(aArray);
+  end;
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' IOS'}
+{$IF defined(IOS)}
+var aImage: UIimage;
+    aData: NSData;
+    aDestSize: TpointF;
+    aDestRect: TrectF;
+    aSrcRect: TrectF;
+    aContext: CGContextRef;
+    aColorSpace: CGColorSpaceRef;
+begin
+  result := nil;
+  aData := TNSData.Wrap(TNSData.alloc.initWithBytesNoCopy(aStream.Memory, // bytes: A buffer containing data for the new object. If flag is YES, bytes must point to a memory block allocated with malloc.
+                                                          astream.Size,   // length: The number of bytes to hold from bytes. This value must not exceed the length of bytes.
+                                                          False));        // flag: If YES, the returned object takes ownership of the bytes pointer and frees it on deallocation.
+  try
+    if aData.length > 0 then begin
+      aImage := TUIImage.Wrap(TUIImage.alloc.initWithData(aData)); // Return Value: An initialized UIImage object, or nil if the method could not initialize the image from the specified data.
+      if aImage <> nil then begin
+        try
+          //-----
+          aDestSize := aGetDestSizeFunct(TpointF.create(aImage.size.width, aImage.size.height));
+          aSrcRect := TrectF.Create(0, 0, aImage.size.Width, aImage.size.Height);
+          aDestRect := TrectF.Create(0, 0, aDestSize.x, aDestSize.y);
+          //-----
+          aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
+          if aColorSpace <> nil then begin             // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
+            try
+              aContext := CGBitmapContextCreate(nil, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
+                                                     //       memory block should be at least (bytesPerRow*height) bytes.
+                                                     //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
+                                                     //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
+                                                ceil(aDestRect.width), // width: The width, in pixels, of the required bitmap.
+                                                ceil(aDestRect.height), // height: The height, in pixels, of the required bitmap.
+                                                8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
+                                                   //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
+                                                   //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
+                                                   //                   chapter of Quartz 2D Programming Guide.
+                                                   //                   we can also use CGImageGetBitsPerComponent(aImage.CGImage) but 8 it's what we need
+                                                0, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
+                                                   //              a value of 0 causes the value to be calculated automatically.
+                                                   //              we could also use CGImageGetBytesPerRow(aImage.CGImage) or W * 4
+                                                aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
+                                                                                      //             bitmap graphics contexts.
+                                                kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
+                                                                                  // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
+                                                                                  // kCGImageAlphaPremultipliedNone =  For example, RGB
+                                                kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
+                                                                          // kCGBitmapByteOrder32Little = Little-endian
+                                                                          // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
+                                                                          //             location in a pixel, and information about whether the pixel components are floating-point or integer
+                                                                          //             values. The constants for specifying the alpha channel information are declared with the
+                                                                          //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
+                                                                          //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
+                                                                          //             and CGImageAlphaInfo constants.)
+                                                                          //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
+                                                                          //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
+                                                                          //             Graphics Contexts chapter of Quartz 2D Programming Guide.
+              if aContext <> nil then begin
+                try
+                  CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context.
+                  CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
+                  CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
+                  CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
+                                     ALLowerLeftCGRect(TpointF.Create(0,0),
+                                                       aDestRect.width,
+                                                       aDestRect.Height,
+                                                       ceil(aDestRect.height)), // rect The location and dimensions in user space of the bounding box in which to draw the image.
+                                     aImage.CGImage); // image The image to draw.
+                  result := CGBitmapContextCreateImage(aContext); // The CGImage object returned by this function is created by a copy operation. Subsequent changes to the bitmap
+                                                                  // graphics context do not affect the contents of the returned image. In some cases the copy operation actually
+                                                                  // follows copy-on-write semantics, so that the actual physical copy of the bits occur only if the underlying
+                                                                  // data in the bitmap graphics context is modified. As a consequence, you may want to use the resulting
+                                                                  // image and release it before you perform additional drawing into the bitmap graphics context. In this way,
+                                                                  // you can avoid the actual physical copy of the data.
+                finally
+                  CGContextRelease(aContext);
+                end;
+              end;
+            finally
+              CGColorSpaceRelease(aColorSpace);
+            end;
+          end;
+          //-----
+        finally
+          aImage.release;
+        end;
+      end
+    end;
+  finally
+    aData.release;
+  end;
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' MSWINDOWS / _MACOS'}
+{$IF defined(MSWINDOWS) or defined(_MACOS)}
+begin
+  result := ALResizeAndStretchImageV1(aStream, aGetDestSizeFunct);
+end;
+{$IFEND}
+{$ENDREGION}
+
+{******************************************************************************************************************************************************************************}
+function ALResizeAndStretchImageV2(const aStream: TCustomMemoryStream; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
+
+{$REGION ' ANDROID'}
+{$IF defined(ANDROID)}
+var aArray: TJavaArray<Byte>;
+    aBitmap: Jbitmap;
+    aMatrix: JMatrix;
+    aDestRect: TrectF;
+    aSrcRect: Trectf;
+begin
+  aArray := TJavaArray<Byte>.Create(aStream.Size);
+  try
+    system.Move(aStream.Memory^, aArray.Data^, aStream.Size);
+    aBitmap := TJBitmapFactory.JavaClass.decodeByteArray(aArray, 0, aStream.Size);
+    if aBitmap = nil then Exit(nil);
+    try
+      aSrcRect := TrectF.Create(0, 0, aBitmap.getWidth, aBitmap.getHeight);
+      aDestRect := TrectF.Create(0, 0, W, H);
+      aMatrix := TJMatrix.JavaClass.init;
+      aMatrix.postScale(aDestRect.width/aSrcRect.width, aDestRect.height/aSrcRect.height);
+      result := TJBitmap.JavaClass.createBitmap(aBitmap{src}, round(aSrcRect.Left){X}, round(aSrcRect.top){Y}, round(aSrcRect.width){Width}, round(aSrcRect.height){height}, aMatrix{m}, True{filter});
+      aMatrix := nil;
+    finally
+      if not aBitmap.sameAs(result) then aBitmap.recycle;
+      aBitmap := nil;
+    end;
+  finally
+    ALfreeandNil(aArray);
+  end;
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' IOS'}
+{$IF defined(IOS)}
+var aImage: UIimage;
+    aData: NSData;
+    aDestRect: TrectF;
+    aSrcRect: TrectF;
+    aContext: CGContextRef;
+    aColorSpace: CGColorSpaceRef;
+begin
+  result := nil;
+  aData := TNSData.Wrap(TNSData.alloc.initWithBytesNoCopy(aStream.Memory, // bytes: A buffer containing data for the new object. If flag is YES, bytes must point to a memory block allocated with malloc.
+                                                          astream.Size,   // length: The number of bytes to hold from bytes. This value must not exceed the length of bytes.
+                                                          False));        // flag: If YES, the returned object takes ownership of the bytes pointer and frees it on deallocation.
+  try
+    if aData.length > 0 then begin
+      aImage := TUIImage.Wrap(TUIImage.alloc.initWithData(aData)); // Return Value: An initialized UIImage object, or nil if the method could not initialize the image from the specified data.
+      if aImage <> nil then begin
+        try
+          //-----
+          aSrcRect := TrectF.Create(0, 0, aImage.size.Width, aImage.size.Height);
+          aDestRect := TrectF.Create(0, 0, W, H);
+          //-----
+          aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
+          if aColorSpace <> nil then begin             // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
+            try
+              aContext := CGBitmapContextCreate(nil, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
+                                                     //       memory block should be at least (bytesPerRow*height) bytes.
+                                                     //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
+                                                     //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
+                                                ceil(aDestRect.width), // width: The width, in pixels, of the required bitmap.
+                                                ceil(aDestRect.height), // height: The height, in pixels, of the required bitmap.
+                                                8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
+                                                   //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
+                                                   //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
+                                                   //                   chapter of Quartz 2D Programming Guide.
+                                                   //                   we can also use CGImageGetBitsPerComponent(aImage.CGImage) but 8 it's what we need
+                                                0, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
+                                                   //              a value of 0 causes the value to be calculated automatically.
+                                                   //              we could also use CGImageGetBytesPerRow(aImage.CGImage) or W * 4
+                                                aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
+                                                                                      //             bitmap graphics contexts.
+                                                kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
+                                                                                  // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
+                                                                                  // kCGImageAlphaPremultipliedNone =  For example, RGB
+                                                kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
+                                                                          // kCGBitmapByteOrder32Little = Little-endian
+                                                                          // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
+                                                                          //             location in a pixel, and information about whether the pixel components are floating-point or integer
+                                                                          //             values. The constants for specifying the alpha channel information are declared with the
+                                                                          //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
+                                                                          //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
+                                                                          //             and CGImageAlphaInfo constants.)
+                                                                          //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
+                                                                          //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
+                                                                          //             Graphics Contexts chapter of Quartz 2D Programming Guide.
+              if aContext <> nil then begin
+                try
+                  CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context.
+                  CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
+                  CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
+                  CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
+                                     ALLowerLeftCGRect(TpointF.Create(0,0),
+                                                       aDestRect.width,
+                                                       aDestRect.Height,
+                                                       ceil(aDestRect.height)), // rect The location and dimensions in user space of the bounding box in which to draw the image.
+                                     aImage.CGImage); // image The image to draw.
+                  result := CGBitmapContextCreateImage(aContext); // The CGImage object returned by this function is created by a copy operation. Subsequent changes to the bitmap
+                                                                  // graphics context do not affect the contents of the returned image. In some cases the copy operation actually
+                                                                  // follows copy-on-write semantics, so that the actual physical copy of the bits occur only if the underlying
+                                                                  // data in the bitmap graphics context is modified. As a consequence, you may want to use the resulting
+                                                                  // image and release it before you perform additional drawing into the bitmap graphics context. In this way,
+                                                                  // you can avoid the actual physical copy of the data.
+                finally
+                  CGContextRelease(aContext);
+                end;
+              end;
+            finally
+              CGColorSpaceRelease(aColorSpace);
+            end;
+          end;
+          //-----
+        finally
+          aImage.release;
+        end;
+      end
+    end;
+  finally
+    aData.release;
+  end;
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' MSWINDOWS / _MACOS'}
+{$IF defined(MSWINDOWS) or defined(_MACOS)}
+begin
+  result := ALResizeAndStretchImageV1(aStream, W, H);
+end;
+{$IFEND}
+{$ENDREGION}
+
+{********************************************************************************************************************************************************************************************************************************************************}
+function ALResizeAndStretchImageV3(const aStream: TCustomMemoryStream; const aGetDestSizeFunct: TALResizeImageGetDestSizeFunct{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+
+{$REGION ' ANDROID'}
+{$IF defined(ANDROID)}
+var aTmpBitmap: Jbitmap;
+begin
+
+  //create the aTmpBitmap
+  aTmpBitmap := ALResizeAndStretchImageV2(aStream, aGetDestSizeFunct);
+  if aTmpBitmap = nil then exit(nil);
+  try
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
+  finally
+    aTmpBitmap.recycle;
+    aTmpBitmap := nil;
+  end;
+
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' IOS'}
+{$IF defined(IOS)}
+var aImage: UIimage;
+    aData: NSData;
+    aDestSize: TpointF;
+    aDestRect: TrectF;
+    aSrcRect: TrectF;
+    aContext: CGContextRef;
+    aColorSpace: CGColorSpaceRef;
+    aBitmapSurface: TBitmapSurface;
+begin
+  result := nil;
+  aData := TNSData.Wrap(TNSData.alloc.initWithBytesNoCopy(aStream.Memory, // bytes: A buffer containing data for the new object. If flag is YES, bytes must point to a memory block allocated with malloc.
+                                                          astream.Size,   // length: The number of bytes to hold from bytes. This value must not exceed the length of bytes.
+                                                          False));        // flag: If YES, the returned object takes ownership of the bytes pointer and frees it on deallocation.
+  try
+    if aData.length > 0 then begin
+      aImage := TUIImage.Wrap(TUIImage.alloc.initWithData(aData)); // Return Value: An initialized UIImage object, or nil if the method could not initialize the image from the specified data.
+      if aImage <> nil then begin
+        try
+          aBitmapSurface := TbitmapSurface.Create;
+          try
+            //-----
+            aDestSize := aGetDestSizeFunct(TpointF.create(aImage.size.width, aImage.size.height));
+            aSrcRect := TrectF.Create(0, 0, aImage.size.Width, aImage.size.Height);
+            aDestRect := TrectF.Create(0, 0, aDestSize.x, aDestSize.y);
+            //-----
+            aBitmapSurface.SetSize(ceil(aDestRect.width), ceil(aDestRect.height));
+            //-----
+            aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
+            if aColorSpace <> nil then begin             // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
+              try
+                aContext := CGBitmapContextCreate(aBitmapSurface.Bits, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
+                                                                       //       memory block should be at least (bytesPerRow*height) bytes.
+                                                                       //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
+                                                                       //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
+                                                  ceil(aDestRect.width), // width: The width, in pixels, of the required bitmap.
+                                                  ceil(aDestRect.height), // height: The height, in pixels, of the required bitmap.
+                                                  8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
+                                                     //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
+                                                     //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
+                                                     //                   chapter of Quartz 2D Programming Guide.
+                                                     //                   we can also use CGImageGetBitsPerComponent(aImage.CGImage) but 8 it's what we need
+                                                  aBitmapSurface.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
+                                                                        //              a value of 0 causes the value to be calculated automatically.
+                                                                        //              we could also use CGImageGetBytesPerRow(aImage.CGImage) or W * 4
+                                                  aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
+                                                               //             bitmap graphics contexts.
+                                                  kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
+                                                                                    // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
+                                                                                    // kCGImageAlphaPremultipliedNone =  For example, RGB
+                                                  kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
+                                                                            // kCGBitmapByteOrder32Little = Little-endian
+                                                                            // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
+                                                                            //             location in a pixel, and information about whether the pixel components are floating-point or integer
+                                                                            //             values. The constants for specifying the alpha channel information are declared with the
+                                                                            //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
+                                                                            //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
+                                                                            //             and CGImageAlphaInfo constants.)
+                                                                            //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
+                                                                            //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
+                                                                            //             Graphics Contexts chapter of Quartz 2D Programming Guide.
+                if aContext <> nil then begin
+
+                  try
+                    CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context.
+                    CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
+                    CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
+                    CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
+                                       ALLowerLeftCGRect(TpointF.Create(0,0),
+                                                         aDestRect.width,
+                                                         aDestRect.Height,
+                                                         ceil(aDestRect.height)), // rect The location and dimensions in user space of the bounding box in which to draw the image.
+                                       aImage.CGImage); // image The image to draw.
+                  finally
+                    CGContextRelease(aContext);
+                  end;
+
+                  result := TALTexture.Create(aVolatileTexture);
+                  try
+                    result.Assign(aBitmapSurface);
+                  except
+                    ALfreeandNil(result);
+                    raise;
+                  end;
+
+                end;
+              finally
+                CGColorSpaceRelease(aColorSpace);
+              end;
+            end;
+          finally
+            ALfreeandNil(aBitmapSurface);
+          end;
+        finally
+          aImage.release;
+        end;
+      end
+    end;
+  finally
+    aData.release;
+  end;
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' MSWINDOWS / _MACOS'}
+{$IF defined(MSWINDOWS) or defined(_MACOS)}
+begin
+  result := ALResizeAndStretchImageV1(aStream, aGetDestSizeFunct);
+end;
+{$IFEND}
+{$ENDREGION}
+
+
+{*******************************************************************************************************************************************************************************************************************}
+function ALResizeAndStretchImageV3(const aStream: TCustomMemoryStream; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+
+{$REGION ' ANDROID'}
+{$IF defined(ANDROID)}
+var aTmpBitmap: Jbitmap;
+begin
+
+  //create the aTmpBitmap
+  aTmpBitmap := ALResizeAndStretchImageV2(aStream, W, H);
+  if aTmpBitmap = nil then exit(nil);
+  try
+    result := ALJBitmaptoTexture(aTmpBitmap, aVolatileTexture);
+  finally
+    aTmpBitmap.recycle;
+    aTmpBitmap := nil;
+  end;
+
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' IOS'}
+{$IF defined(IOS)}
+var aImage: UIimage;
+    aData: NSData;
+    aDestRect: TrectF;
+    aSrcRect: TrectF;
+    aContext: CGContextRef;
+    aColorSpace: CGColorSpaceRef;
+    aBitmapSurface: TBitmapSurface;
+begin
+  result := nil;
+  aData := TNSData.Wrap(TNSData.alloc.initWithBytesNoCopy(aStream.Memory, // bytes: A buffer containing data for the new object. If flag is YES, bytes must point to a memory block allocated with malloc.
+                                                          astream.Size,   // length: The number of bytes to hold from bytes. This value must not exceed the length of bytes.
+                                                          False));        // flag: If YES, the returned object takes ownership of the bytes pointer and frees it on deallocation.
+  try
+    if aData.length > 0 then begin
+      aImage := TUIImage.Wrap(TUIImage.alloc.initWithData(aData)); // Return Value: An initialized UIImage object, or nil if the method could not initialize the image from the specified data.
+      if aImage <> nil then begin
+        try
+          aBitmapSurface := TbitmapSurface.Create;
+          try
+            //-----
+            aSrcRect := TrectF.Create(0, 0, aImage.size.Width, aImage.size.Height);
+            aDestRect := TrectF.Create(0, 0, W, H);
+            //-----
+            aBitmapSurface.SetSize(ceil(aDestRect.width), ceil(aDestRect.height));
+            //-----
+            aColorSpace := CGColorSpaceCreateDeviceRGB;  // Return Value: A device-dependent RGB color space. You are responsible for releasing this object by
+            if aColorSpace <> nil then begin             // calling CGColorSpaceRelease. If unsuccessful, returns NULL.
+              try
+                aContext := CGBitmapContextCreate(aBitmapSurface.Bits, // data: A pointer to the destination in memory where the drawing is to be rendered. The size of this
+                                                                       //       memory block should be at least (bytesPerRow*height) bytes.
+                                                                       //       In iOS 4.0 and later, and OS X v10.6 and later, you can pass NULL if you want Quartz to allocate
+                                                                       //       memory for the bitmap. This frees you from managing your own memory, which reduces memory leak issues.
+                                                  ceil(aDestRect.width), // width: The width, in pixels, of the required bitmap.
+                                                  ceil(aDestRect.height), // height: The height, in pixels, of the required bitmap.
+                                                  8, // bitsPerComponent: The number of bits to use for each component of a pixel in memory. For example, for a 32-bit
+                                                     //                   pixel format and an RGB color space, you would specify a value of 8 bits per component. For
+                                                     //                   the list of supported pixel formats, see “Supported Pixel Formats” in the Graphics Contexts
+                                                     //                   chapter of Quartz 2D Programming Guide.
+                                                     //                   we can also use CGImageGetBitsPerComponent(aImage.CGImage) but 8 it's what we need
+                                                  aBitmapSurface.Pitch, // bytesPerRow: The number of bytes of memory to use per row of the bitmap. If the data parameter is NULL, passing
+                                                                        //              a value of 0 causes the value to be calculated automatically.
+                                                                        //              we could also use CGImageGetBytesPerRow(aImage.CGImage) or W * 4
+                                                  aColorSpace, // colorspace: The color space to use for the bi1tmap context. Note that indexed color spaces are not supported for
+                                                               //             bitmap graphics contexts.
+                                                  kCGImageAlphaPremultipliedLast or // kCGImageAlphaPremultipliedLast =  For example, premultiplied RGBA
+                                                                                    // kCGImageAlphaPremultipliedFirst =  For example, premultiplied ARGB
+                                                                                    // kCGImageAlphaPremultipliedNone =  For example, RGB
+                                                  kCGBitmapByteOrder32Big); // kCGBitmapByteOrder32Big = Big-endian
+                                                                            // kCGBitmapByteOrder32Little = Little-endian
+                                                                            // bitmapInfo: Constants that specify whether the bitmap should contain an alpha channel, the alpha channel’s relative
+                                                                            //             location in a pixel, and information about whether the pixel components are floating-point or integer
+                                                                            //             values. The constants for specifying the alpha channel information are declared with the
+                                                                            //             CGImageAlphaInfo type but can be passed to this parameter safely. You can also pass the other constants
+                                                                            //             associated with the CGBitmapInfo type. (See CGImage Reference for a description of the CGBitmapInfo
+                                                                            //             and CGImageAlphaInfo constants.)
+                                                                            //             For an example of how to specify the color space, bits per pixel, bits per pixel component, and bitmap
+                                                                            //             information using the CGBitmapContextCreate function, see “Creating a Bitmap Graphics Context” in the
+                                                                            //             Graphics Contexts chapter of Quartz 2D Programming Guide.
+                if aContext <> nil then begin
+
+                  try
+                    CGContextSetInterpolationQuality(aContext, kCGInterpolationHigh); // Sets the level of interpolation quality for a graphics context.
+                    CGContextSetShouldAntialias(aContext, 1); // Sets anti-aliasing on or off for a graphics context.
+                    CGContextSetAllowsAntialiasing(aContext, 1); // Sets whether or not to allow anti-aliasing for a graphics context.
+                    CGContextDrawImage(aContext, // c: The graphics context in which to draw the image.
+                                       ALLowerLeftCGRect(TpointF.Create(0,0),
+                                                         aDestRect.width,
+                                                         aDestRect.Height,
+                                                         ceil(aDestRect.height)), // rect The location and dimensions in user space of the bounding box in which to draw the image.
+                                       aImage.CGImage); // image The image to draw.
+                  finally
+                    CGContextRelease(aContext);
+                  end;
+
+                  result := TALTexture.Create(aVolatileTexture);
+                  try
+                    result.Assign(aBitmapSurface);
+                  except
+                    ALfreeandNil(result);
+                    raise;
+                  end;
+
+                end;
+              finally
+                CGColorSpaceRelease(aColorSpace);
+              end;
+            end;
+          finally
+            ALfreeandNil(aBitmapSurface);
+          end;
+        finally
+          aImage.release;
+        end;
+      end
+    end;
+  finally
+    aData.release;
+  end;
+end;
+{$IFEND}
+{$ENDREGION}
+
+{$REGION ' MSWINDOWS / _MACOS'}
+{$IF defined(MSWINDOWS) or defined(_MACOS)}
+begin
+  result := ALResizeAndStretchImageV1(aStream, W, H);
+end;
+{$IFEND}
+{$ENDREGION}
+
+{**************************************************************************************************}
+function ALLoadResizeAndStretchResourceImageV1(const aResName: String; const W, H: single): Tbitmap;
+var aStream: TResourceStream;
+begin
+  aStream := TResourceStream.Create(HInstance, aResName, RT_RCDATA);
+  try
+    result := ALResizeAndStretchImageV1(aStream, W, H);
+  finally
+    ALfreeandNil(aStream);
+  end;
+end;
+
+{******************************************************************************************************************************************************************************}
+function ALLoadResizeAndStretchResourceImageV2(const aResName: String; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
+var aStream: TResourceStream;
+begin
+  aStream := TResourceStream.Create(HInstance, aResName, RT_RCDATA);
+  try
+    result := ALResizeAndStretchImageV2(aStream, W, H);
+  finally
+    ALfreeandNil(aStream);
+  end;
+end;
+
+{********************************************************************************************************************************************************************************************************************}
+function  ALLoadResizeAndStretchResourceImageV3(const aResName: String; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+var aStream: TResourceStream;
+begin
+  aStream := TResourceStream.Create(HInstance, aResName, RT_RCDATA);
+  try
+    result := ALResizeAndStretchImageV3(aStream, W, H{$IFDEF _USE_TEXTURE}, aVolatileTexture{$ENDIF});
+  finally
+    ALfreeandNil(aStream);
+  end;
+end;
+
+{***********************************************************************************************}
+function ALLoadResizeAndStretchFileImageV1(const aFileName: String; const W, H: single): Tbitmap;
+var aStream: TMemoryStream;
+begin
+  aStream := TMemoryStream.Create;
+  try
+    aStream.LoadFromFile(aFileName);
+    result := ALResizeAndStretchImageV1(aStream, W, H);
+  finally
+    ALfreeandNil(aStream);
+  end;
+end;
+
+{***************************************************************************************************************************************************************************}
+function ALLoadResizeAndStretchFileImageV2(const aFileName: String; const W, H: single): {$IF defined(ANDROID)}Jbitmap{$ELSEIF defined(IOS)}CGImageRef{$ELSE}Tbitmap{$IFEND};
+var aStream: TMemoryStream;
+begin
+  aStream := TMemoryStream.Create;
+  try
+    aStream.LoadFromFile(aFileName);
+    result := ALResizeAndStretchImageV2(aStream, W, H);
+  finally
+    ALfreeandNil(aStream);
+  end;
+end;
+
+{*****************************************************************************************************************************************************************************************************************}
+function  ALLoadResizeAndStretchFileImageV3(const aFileName: String; const W, H: single{$IFDEF _USE_TEXTURE}; const aVolatileTexture: boolean = true{$ENDIF}): {$IFDEF _USE_TEXTURE}TTexture{$ELSE}Tbitmap{$ENDIF};
+var aStream: TMemoryStream;
+begin
+  aStream := TMemoryStream.Create;
+  try
+    aStream.LoadFromFile(aFileName);
+    result := ALResizeAndStretchImageV3(aStream, W, H{$IFDEF _USE_TEXTURE}, aVolatileTexture{$ENDIF});
+  finally
+    ALfreeandNil(aStream);
+  end;
+end;
+
+{**************}
+{$IFDEF ANDROID}
+function ALControlNeedKeyboard(const aControl: IControl): Boolean;
+begin
+  result := (aControl <> nil) and
+            (aControl is TALAndroidEdit);
+end;
+{$ENDIF}
+
+{**************}
+{$IFDEF ANDROID}
+procedure ALObtainKeyboardRect(var aBounds: TRect);
+var aContentRect, aTotalRect: JRect;
+begin
+  aContentRect := TJRect.Create;
+  aTotalRect := TJRect.Create;
+  MainActivity.getWindow.getDecorView.getWindowVisibleDisplayFrame(aContentRect);
+  MainActivity.getWindow.getDecorView.getDrawingRect(aTotalRect);
+  aBounds := TRectF.Create(ConvertPixelToPoint(TPointF.Create(aTotalRect.left, aContentRect.bottom)), // topleft
+                           ConvertPixelToPoint(TPointF.Create(aTotalRect.right, aTotalRect.bottom))).Truncate;  //bottomRight
+end;
+{$ENDIF}
+
 initialization
   ALCustomConvertFontFamilyProc := nil;
+  {$IFDEF ANDROID}
+  ALViewStackCount := 0;
+  {$ENDIF}
 
 end.

@@ -21,13 +21,52 @@ uses Androidapi.JNI.Widget,
 
 type
 
-  {*******************************}
+  {**************************************}
+  JALDatePickerDialogListener = interface;
+  JALDatePickerDialog = interface;
   JALSoftInputListener = interface;
   JALKeyPreImeListener = interface;
   JALEditText = interface;
   JALControlHostLayout = interface;
   JLog = interface;
   JStatFs = interface;
+  JLocalBroadcastManager = interface;
+  JPreferenceManager = interface;
+  JAsyncTask_Status = interface;
+  JAsyncTask = interface;
+
+  {******************************************************}
+  JALDatePickerDialogListenerClass = interface(IJavaClass)
+    ['{3EDC638B-74FD-40D8-A09C-B92919C9D85B}']
+  end;
+
+  {***********************************************************}
+  [JavaSignature('com/alcinoe/app/ALDatePickerDialogListener')]
+  JALDatePickerDialogListener = interface(IJavaInstance)
+    ['{9A145783-462B-4E51-AAFC-48F68C79C3EA}']
+    procedure onBtnClick(which: integer; year: integer; month: integer; dayOfMonth: integer); cdecl;
+  end;
+  TJALDatePickerDialogListener = class(TJavaGenericImport<JALDatePickerDialogListenerClass, JALDatePickerDialogListener>) end;
+
+  {************************************************}
+  JALDatePickerDialogClass = interface(JObjectClass)
+    ['{5CBB555C-9128-492E-BFE9-B0B6AE42F26B}']
+    {class} function init(context: JContext;
+                          button_positive_text: JCharSequence;
+	                        button_negative_text: JCharSequence;
+                          button_neutral_text: JCharSequence): JALDatePickerDialog; cdecl;
+  end;
+
+  {***************************************************}
+  [JavaSignature('com/alcinoe/app/ALDatePickerDialog')]
+  JALDatePickerDialog = interface(JObject)
+    ['{DF4E7117-15AA-4063-9150-EEEC2356FCD7}']
+    procedure show(year: integer;
+                   month: integer;
+                   dayOfMonth: integer); cdecl;
+    procedure setListener(listener: JALDatePickerDialogListener); cdecl;
+  end;
+  TJALDatePickerDialog = class(TJavaGenericImport<JALDatePickerDialogClass, JALDatePickerDialog>) end;
 
   {***********************************************}
   JALSoftInputListenerClass = interface(IJavaClass)
@@ -73,6 +112,7 @@ type
     procedure hideSoftInput; cdecl;
     procedure setSoftInputListener(listener: JALSoftInputListener); cdecl;
     procedure setKeyPreImeListener(listener: JALKeyPreImeListener); cdecl;
+    procedure setMaxLength(value: integer); cdecl;
   end;
   TJALEditText = class(TJavaGenericImport<JALEditTextClass, JALEditText>) end;
 
@@ -160,16 +200,96 @@ type
   end;
   TJStatFs = class(TJavaGenericImport<JStatFsClass, JStatFs>) end;
 
+  {***************************************************}
+  JLocalBroadcastManagerClass = interface(JObjectClass)
+    ['{03179F7E-C439-4369-93CC-AA2BADC54398}']
+    {class} function getInstance(context: JContext): JLocalBroadcastManager; cdecl;
+  end;
+
+  {*****************************************************************}
+  [JavaSignature('android/support/v4/content/LocalBroadcastManager')]
+  JLocalBroadcastManager = interface(JObject)
+    ['{6C255CD6-D94E-40BC-A758-EC4965A40725}']
+    procedure registerReceiver(receiver: JBroadcastReceiver; filter: JIntentFilter); cdecl;
+    function sendBroadcast(intent: JIntent): Boolean; cdecl;
+    procedure sendBroadcastSync(intent: JIntent); cdecl;
+    procedure unregisterReceiver(receiver: JBroadcastReceiver); cdecl;
+  end;
+  TJLocalBroadcastManager = class(TJavaGenericImport<JLocalBroadcastManagerClass, JLocalBroadcastManager>) end;
+
+  {***************************************************}
+  JPreferenceManagerClass = interface(JObjectClass)
+    ['{2BCBB8F6-B5EE-441E-B01B-5F7E37A783B5}']
+    {class} function getDefaultSharedPreferences(context: JContext): JSharedPreferences; cdecl;
+  end;
+
+  {*****************************************************}
+  [JavaSignature('android/preference/PreferenceManager')]
+  JPreferenceManager = interface(JObject)
+    ['{62FC9030-B469-461B-98AD-C5E3F9AAACBA}']
+  end;
+  TJPreferenceManager = class(TJavaGenericImport<JPreferenceManagerClass, JPreferenceManager>) end;
+
+  {********************************************}
+  JAsyncTask_StatusClass = interface(JEnumClass)
+    ['{16452E24-44D5-4E84-990E-3C1916FB372B}']
+    {class} function _GetFINISHED: JAsyncTask_Status; cdecl;
+    {class} function _GetPENDING: JAsyncTask_Status; cdecl;
+    {class} function _GetRUNNING: JAsyncTask_Status; cdecl;
+    {class} function valueOf(name: JString): JAsyncTask_Status; cdecl;//Deprecated
+    {class} function values: TJavaObjectArray<JAsyncTask_Status>; cdecl;//Deprecated
+    {class} property FINISHED: JAsyncTask_Status read _GetFINISHED;
+    {class} property PENDING: JAsyncTask_Status read _GetPENDING;
+    {class} property RUNNING: JAsyncTask_Status read _GetRUNNING;
+  end;
+
+  {********************************************}
+  [JavaSignature('android/os/AsyncTask$Status')]
+  JAsyncTask_Status = interface(JEnum)
+    ['{96B0BCE7-1312-49B9-9F33-43541680B0E7}']
+  end;
+  TJAsyncTask_Status = class(TJavaGenericImport<JAsyncTask_StatusClass, JAsyncTask_Status>) end;
+
+  {***************************************}
+  JAsyncTaskClass = interface(JObjectClass)
+    ['{73C141D6-F8D7-4FE4-BFA3-3441B6367189}']
+    {class} function _GetSERIAL_EXECUTOR: JExecutor; cdecl;
+    {class} function _GetTHREAD_POOL_EXECUTOR: JExecutor; cdecl;
+    {class} function init: JAsyncTask; cdecl;
+    {class} property SERIAL_EXECUTOR: JExecutor read _GetSERIAL_EXECUTOR;
+    {class} property THREAD_POOL_EXECUTOR: JExecutor read _GetTHREAD_POOL_EXECUTOR;
+  end;
+
+  {*************************************}
+  [JavaSignature('android/os/AsyncTask')]
+  JAsyncTask = interface(JObject)
+    ['{8BC49850-F199-4620-BCFF-ACDA1D69417A}']
+    function cancel(mayInterruptIfRunning: Boolean): Boolean; cdecl;
+    procedure execute(runnable: JRunnable); cdecl; overload;
+    function getStatus: JAsyncTask_Status; cdecl;
+    function isCancelled: Boolean; cdecl;
+    function get: JObject; cdecl; overload;
+    function get(timeout: Int64; &unit: JTimeUnit): JObject; cdecl; overload;
+  end;
+  TJAsyncTask = class(TJavaGenericImport<JAsyncTaskClass, JAsyncTask>) end;
+
+
 implementation
 
 procedure RegisterTypes;
 begin
+  TRegTypes.RegisterType('ALAndroidApi.JALDatePickerDialogListener', TypeInfo(ALAndroidApi.JALDatePickerDialogListener));
+  TRegTypes.RegisterType('ALAndroidApi.JALDatePickerDialog', TypeInfo(ALAndroidApi.JALDatePickerDialog));
   TRegTypes.RegisterType('ALAndroidApi.JALSoftInputListener', TypeInfo(ALAndroidApi.JALSoftInputListener));
   TRegTypes.RegisterType('ALAndroidApi.JALKeyPreImeListener', TypeInfo(ALAndroidApi.JALKeyPreImeListener));
   TRegTypes.RegisterType('ALAndroidApi.JALEditText', TypeInfo(ALAndroidApi.JALEditText));
   TRegTypes.RegisterType('ALAndroidApi.JALControlHostLayout', TypeInfo(ALAndroidApi.JALControlHostLayout));
   TRegTypes.RegisterType('ALAndroidApi.JLog', TypeInfo(ALAndroidApi.JLog));
   TRegTypes.RegisterType('ALAndroidApi.JStatFs', TypeInfo(ALAndroidApi.JStatFs));
+  TRegTypes.RegisterType('ALAndroidApi.JLocalBroadcastManager', TypeInfo(ALAndroidApi.JLocalBroadcastManager));
+  TRegTypes.RegisterType('ALAndroidApi.JPreferenceManager', TypeInfo(ALAndroidApi.JPreferenceManager));
+  TRegTypes.RegisterType('ALAndroidApi.JAsyncTask_Status', TypeInfo(ALAndroidApi.JAsyncTask_Status));
+  TRegTypes.RegisterType('ALAndroidApi.JAsyncTask', TypeInfo(ALAndroidApi.JAsyncTask));
 end;
 
 initialization

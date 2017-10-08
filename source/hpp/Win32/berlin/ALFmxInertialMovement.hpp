@@ -19,6 +19,7 @@
 #include <System.Classes.hpp>
 #include <System.Generics.Collections.hpp>
 #include <System.Messaging.hpp>
+#include <System.TypInfo.hpp>
 #include <FMX.Types.hpp>
 #include <ALFmxCommon.hpp>
 #include <System.Generics.Defaults.hpp>
@@ -81,11 +82,13 @@ private:
 	
 	
 private:
+	NativeUInt FTimerHandle;
+	bool fMouseEventReceived;
+	bool FTimerActive;
 	double FVelocityFactor;
 	bool FEnabled;
 	bool FInTimerProc;
 	System::Uitypes::TTouchTracking FTouchTracking;
-	NativeUInt FTimerHandle;
 	System::Word FInterval;
 	Alfmxcommon::TALPointD FCurrentVelocity;
 	Alfmxcommon::TALPointD FUpVelocity;
@@ -104,6 +107,7 @@ private:
 	bool FCancelTargetY;
 	System::Classes::TNotifyEvent FOnStart;
 	System::Classes::TNotifyEvent FOnTimer;
+	System::Classes::TNotifyEvent FOnChanged;
 	System::Classes::TNotifyEvent FOnStop;
 	bool FDown;
 	bool FAnimation;
@@ -132,9 +136,9 @@ private:
 	int FDeadZone;
 	int FUpdateCount;
 	System::Types::TPoint FElasticityFactor;
+	System::Classes::TNotifyEvent FOnCalcVelocity;
 	void __fastcall StartTimer(void);
 	void __fastcall StopTimer(void);
-	void __fastcall TimerProc(void);
 	void __fastcall Clear(System::TDateTime T = 0.000000E+00);
 	void __fastcall UpdateTimer(void);
 	void __fastcall SetInterval(const System::Word Value);
@@ -204,6 +208,7 @@ public:
 	__fastcall virtual ~TALAniCalculations(void);
 	virtual void __fastcall AfterConstruction(void);
 	virtual void __fastcall Assign(System::Classes::TPersistent* Source);
+	void __fastcall TimerProc(void);
 	virtual void __fastcall MouseDown(double X, double Y);
 	virtual void __fastcall MouseMove(double X, double Y);
 	virtual void __fastcall MouseLeave(void);
@@ -230,13 +235,15 @@ public:
 	__property bool Down = {read=FDown, write=SetDown, nodefault};
 	__property float Opacity = {read=GetOpacity};
 	__property bool InTimerProc = {read=FInTimerProc, nodefault};
+	void __fastcall Calculate(void);
 	__property bool Moved = {read=FMoved, nodefault};
 	__property bool LowVelocity = {read=GetLowVelocity, nodefault};
 	void __fastcall BeginUpdate(void);
 	void __fastcall EndUpdate(void);
 	__property int UpdateCount = {read=FUpdateCount, nodefault};
 	__property System::Classes::TNotifyEvent OnStart = {read=FOnStart, write=FOnStart};
-	__property System::Classes::TNotifyEvent OnChanged = {read=FOnTimer, write=FOnTimer};
+	__property System::Classes::TNotifyEvent OnTimer = {read=FOnTimer, write=FOnTimer};
+	__property System::Classes::TNotifyEvent OnChanged = {read=FOnChanged, write=FOnChanged};
 	__property System::Classes::TNotifyEvent OnStop = {read=FOnStop, write=FOnStop};
 	__property int DeadZone = {read=FDeadZone, write=FDeadZone, default=8};
 	
@@ -246,6 +253,7 @@ __published:
 	__property double Elasticity = {read=FElasticity, write=FElasticity, stored=ElasticityStored};
 	__property double StorageTime = {read=FStorageTime, write=FStorageTime, stored=StorageTimeStored};
 	__property double VelocityFactor = {read=FVelocityFactor, write=FVelocityFactor, stored=VelocityFactorStored};
+	__property System::Classes::TNotifyEvent OnCalcVelocity = {read=FOnCalcVelocity, write=FOnCalcVelocity};
 };
 
 
@@ -259,6 +267,7 @@ static const System::Int8 ALDefaultMinVelocity = System::Int8(0xa);
 static const System::Word ALDefaultMaxVelocity = System::Word(0x1388);
 static const System::Int8 ALDefaultDeadZone = System::Int8(0x8);
 static const System::Int8 ALDefaultVelocityFactor = System::Int8(0x1);
+extern DELPHI_PACKAGE System::Generics::Collections::TList__1<TALAniCalculations*>* ALAniCalcTimerProcs;
 }	/* namespace Alfmxinertialmovement */
 #if !defined(DELPHIHEADER_NO_IMPLICIT_NAMESPACE_USE) && !defined(NO_USING_NAMESPACE_ALFMXINERTIALMOVEMENT)
 using namespace Alfmxinertialmovement;

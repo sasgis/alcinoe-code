@@ -9,37 +9,6 @@ Version:      4.00
 Description:  This unit contains utilities to manipulate
               Internet Messages Headers (EMAIL or NEWSNET messages)
 
-Legal issues: Copyright (C) 1999-2013 by Arkadia Software Engineering
-
-              This software is provided 'as-is', without any express
-              or implied warranty.  In no event will the author be
-              held liable for any  damages arising from the use of
-              this software.
-
-              Permission is granted to anyone to use this software
-              for any purpose, including commercial applications,
-              and to alter it and redistribute it freely, subject
-              to the following restrictions:
-
-              1. The origin of this software must not be
-                 misrepresented, you must not claim that you wrote
-                 the original software. If you use this software in
-                 a product, an acknowledgment in the product
-                 documentation would be appreciated but is not
-                 required.
-
-              2. Altered source versions must be plainly marked as
-                 such, and must not be misrepresented as being the
-                 original software.
-
-              3. This notice may not be removed or altered from any
-                 source distribution.
-
-              4. You must register this software by sending a picture
-                 postcard to the author. Use a nice stamp and mention
-                 your name, street address, EMail address and any
-                 comment you like to say.
-
 Know bug :
 
 History :     05/02/2008: add soft line break in ALDecodeQuotedPrintableString
@@ -56,8 +25,16 @@ interface
   {$LEGACYIFEND ON} // http://docwiki.embarcadero.com/RADStudio/XE4/en/Legacy_IFEND_(Delphi)
 {$IFEND}
 
+{$IF Low(string) = 0}
+  {$DEFINE _ZEROBASEDSTRINGS_ON}
+{$IFEND}
+
+{$IFNDEF NEXTGEN}
 uses system.Classes,
      AlStringList;
+{$ENDIF}
+
+{$IFNDEF NEXTGEN}
 
 Type
 
@@ -175,13 +152,21 @@ Function AlGenerateInternetMessageID: AnsiString; overload;
 Function AlGenerateInternetMessageID(const ahostname: AnsiString): AnsiString; overload;
 function AlIsValidEmail(const Value: AnsiString): boolean;
 
+{$ENDIF}
+
+function AlIsValidEmailU(const Value: String): boolean;
+
 implementation
 
 uses system.Sysutils,
+     {$IFNDEF NEXTGEN}
      ALHttpClient,
      ALMime,
      ALWinsock,
+     {$ENDIF}
      ALString;
+
+{$IFNDEF NEXTGEN}
 
 {***************************************************************************}
 { FriendlyEmail                  RealName       Result                      }
@@ -713,7 +698,9 @@ begin
   end;
 end;
 
-{********************************************************}
+{*********************}
+{$ZEROBASEDSTRINGS OFF} // << the guy who introduce zero base string in delphi is just a mix of a Monkey and a Donkey !
+{$WARN SYMBOL_DEPRECATED OFF}
 function AlIsValidEmail(const Value: AnsiString): boolean;
 
  {------------------------------------------------------}
@@ -721,9 +708,9 @@ function AlIsValidEmail(const Value: AnsiString): boolean;
  var i: integer;
  begin
    Result:= false;
-   for i:= 1 to Length(s) do begin
+   for i:= low(s) to high(s) do begin
      // illegal char in s -> no valid address
-     if not (s[i] in ['a'..'z','A'..'Z','0'..'9','_','-','.','+']) then Exit;
+     if not CharInSet(s[i], ['a'..'z','A'..'Z','0'..'9','_','-','.','+']) then Exit;
    end;
    Result:= true;
  end;
@@ -733,9 +720,9 @@ function AlIsValidEmail(const Value: AnsiString): boolean;
  var i: integer;
  begin
    Result:= false;
-   for i:= 1 to Length(s) do begin
+   for i:= low(s) to high(s) do begin
      // illegal char in s -> no valid address
-     if not (s[i] in ['a'..'z','A'..'Z','0'..'9','-','.']) then Exit;
+     if not CharInSet(s[i], ['a'..'z','A'..'Z','0'..'9','-','.']) then Exit;
    end;
    Result:= true;
  end;
@@ -745,9 +732,9 @@ function AlIsValidEmail(const Value: AnsiString): boolean;
  var i: integer;
  begin
    Result:= false;
-   for i:= 1 to Length(s) do begin
+   for i:= low(s) to high(s) do begin
      // illegal char in s -> no valid address
-     if not (s[i] in ['a'..'z','A'..'Z']) then Exit;
+     if not CharInSet(s[i], ['a'..'z','A'..'Z']) then Exit;
    end;
    Result:= true;
  end;
@@ -792,5 +779,97 @@ begin
            CheckAllowedExt(ExtPart) and
            (length(Value) <= 254); // http://stackoverflow.com/questions/386294/what-is-the-maximum-length-of-a-valid-email-address
 end;
+{$WARN SYMBOL_DEPRECATED ON}
+{$IF defined(_ZEROBASEDSTRINGS_ON)}
+  {$ZEROBASEDSTRINGS ON}
+{$IFEND}
+
+{$ENDIF}
+
+{*********************}
+{$ZEROBASEDSTRINGS OFF} // << the guy who introduce zero base string in delphi is just a mix of a Monkey and a Donkey !
+{$WARN SYMBOL_DEPRECATED OFF}
+function AlIsValidEmailU(const Value: String): boolean;
+
+ {--------------------------------------------------}
+ function CheckAllowedName(const s: String): boolean;
+ var i: integer;
+ begin
+   Result:= false;
+   for i:= low(s) to high(s) do begin
+     // illegal char in s -> no valid address
+     if not CharInSet(s[i], ['a'..'z','A'..'Z','0'..'9','_','-','.','+']) then Exit;
+   end;
+   Result:= true;
+ end;
+
+ {------------------------------------------------------}
+ function CheckAllowedHostname(const s: String): boolean;
+ var i: integer;
+ begin
+   Result:= false;
+   for i:= low(s) to high(s) do begin
+     // illegal char in s -> no valid address
+     if not CharInSet(s[i], ['a'..'z','A'..'Z','0'..'9','-','.']) then Exit;
+   end;
+   Result:= true;
+ end;
+
+ {-------------------------------------------------}
+ function CheckAllowedExt(const s: String): boolean;
+ var i: integer;
+ begin
+   Result:= false;
+   for i:= low(s) to high(s) do begin
+     // illegal char in s -> no valid address
+     if not CharInSet(s[i], ['a'..'z','A'..'Z']) then Exit;
+   end;
+   Result:= true;
+ end;
+
+var i, j: integer;
+    namePart, serverPart, extPart: String;
+
+begin
+  Result := false;
+
+  // Value can not be < 6 char (ex: a@b.fr)
+  if length(Value) < 6 then exit;
+
+  // must have the '@' char inside
+  i := AlPosU('@', Value);
+  if (i <= 1) or (i > length(Value)-4) then exit;
+
+  //can not have @. or .@
+  if (value[i-1] = '.') or (value[i+1] = '.') then exit;
+
+  //can not have 2 ..
+  If (ALposU('..', Value) > 0) then Exit;
+
+  //extract namePart and serverPart
+  namePart:= AlCopyStrU(Value, 1, i - 1);
+  serverPart:= AlCopyStrU(Value, i + 1, Length(Value));
+
+  // Extension (.fr, .com, etc..) must be betwen 2 to 6 char
+  i:= AlPosU('.', serverPart);
+  j := 0;
+  While I > 0 do begin
+    j := i;
+    I := AlPosExU('.', serverPart, i + 1);
+  end;
+  if (j <= 1) then Exit; // no dot at all so exit !
+  extPart    := AlCopyStrU(ServerPart,J+1,Maxint);
+  serverPart := ALCopyStrU(ServerPart, 1, J - 1);
+  If not (Length(ExtPart) in [2..6]) then exit;
+
+  Result:= CheckAllowedname(namePart) and
+           CheckAllowedHostname(serverPart) and
+           CheckAllowedExt(ExtPart) and
+           (length(Value) <= 254); // http://stackoverflow.com/questions/386294/what-is-the-maximum-length-of-a-valid-email-address
+end;
+{$WARN SYMBOL_DEPRECATED ON}
+{$IF defined(_ZEROBASEDSTRINGS_ON)}
+  {$ZEROBASEDSTRINGS ON}
+{$IFEND}
 
 end.

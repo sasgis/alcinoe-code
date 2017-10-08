@@ -217,6 +217,7 @@ public:
 	System::Uitypes::TAlphaColor fontColor;
 	System::Uitypes::TFontStyles fontStyle;
 	System::UnicodeString id;
+	System::UnicodeString imgSrc;
 	bool isEllipsis;
 	__fastcall TALBreakTextItem(void);
 public:
@@ -501,10 +502,13 @@ extern DELPHI_PACKAGE System::Types::TRectF __fastcall ALAlignDimensionToPixelRo
 extern DELPHI_PACKAGE System::Types::TRectF __fastcall ALAlignDimensionToPixelCeil(const System::Types::TRectF &Rect, const float Scale)/* overload */;
 extern DELPHI_PACKAGE float __fastcall ALAlignDimensionToPixelCeil(const float Dimension, const float Scale)/* overload */;
 extern DELPHI_PACKAGE System::Types::TRectF __fastcall ALAlignDimensionToPixelCeil(const System::Types::TRectF &Rect)/* overload */;
+extern DELPHI_PACKAGE System::Types::TRectF __fastcall ALAlignToPixelRound(const System::Types::TRectF &Rect);
 extern DELPHI_PACKAGE void __fastcall ALGetTextMetrics(const float aFontSize, const System::Uitypes::TFontStyles aFontStyle, const System::UnicodeString aFontName, float &aAscent, float &aDescent);
 extern DELPHI_PACKAGE int __fastcall ALbreakText(const float aFontSize, const System::Uitypes::TFontStyles aFontStyle, const System::UnicodeString aFontName, const System::UnicodeString atext, const float aMaxWidth, float &aMeasuredWidth)/* overload */;
-extern DELPHI_PACKAGE bool __fastcall ALbreakText(const System::Uitypes::TAlphaColor aFontColor, const float aFontSize, const System::Uitypes::TFontStyles aFontStyle, const System::UnicodeString aFontName, System::Types::TRectF &ARect, const System::UnicodeString AText, const bool aWordWrap, const Fmx::Types::TTextAlign AHTextAlign, const Fmx::Types::TTextAlign AVTextAlign, const Fmx::Types::TTextTrimming aTrimming, TALBreakTextItems* const aBreakTextItems, int &aTotalLines, const System::Types::TPointF &aFirstLineIndent, const float aLineSpacing = 0.000000E+00f, const System::UnicodeString aEllipsisText = L"\u2026", const System::Uitypes::TFontStyles aEllipsisFontStyle = System::Uitypes::TFontStyles() , const System::Uitypes::TAlphaColor aEllipsisFontColor = (System::Uitypes::TAlphaColor)(0x0), const int aMaxlines = 0x0)/* overload */;
-extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALDrawMultiLineText(const System::UnicodeString aText, System::Types::TRectF &aRect, bool &aTextBreaked, float &aAscent, float &aDescent, System::Types::TPointF &aFirstPos, System::Types::TPointF &aLastPos, TalTextElements &aElements, System::Types::TRectF &aEllipsisRect, TALDrawMultiLineTextOptions* const aOptions)/* overload */;
+extern DELPHI_PACKAGE bool __fastcall ALbreakText(const System::Uitypes::TAlphaColor aFontColor, const float aFontSize, const System::Uitypes::TFontStyles aFontStyle, const System::UnicodeString aFontName, System::Types::TRectF &ARect, const System::UnicodeString AText, const bool aWordWrap, const Fmx::Types::TTextAlign AHTextAlign, const Fmx::Types::TTextAlign AVTextAlign, const Fmx::Types::TTextTrimming aTrimming, TALBreakTextItems* const aBreakTextItems, int &aTotalLines, bool &aAllTextDrawed, const System::Types::TPointF &aFirstLineIndent, const float aLineSpacing = 0.000000E+00f, const System::UnicodeString aEllipsisText = L"\u2026", const System::Uitypes::TFontStyles aEllipsisFontStyle = System::Uitypes::TFontStyles() , const System::Uitypes::TAlphaColor aEllipsisFontColor = (System::Uitypes::TAlphaColor)(0x0),
+	const int aMaxlines = 0x0)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALDrawMultiLineText(const System::UnicodeString aText, System::Types::TRectF &aRect, bool &aTextBreaked, bool &aAllTextDrawed, float &aAscent, float &aDescent, System::Types::TPointF &aFirstPos, System::Types::TPointF &aLastPos, TalTextElements &aElements, System::Types::TRectF &aEllipsisRect, TALDrawMultiLineTextOptions* const aOptions)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALDrawMultiLineText(const System::UnicodeString aText, System::Types::TRectF &aRect, bool &aTextBreaked, bool &aAllTextDrawed, TALDrawMultiLineTextOptions* const aOptions)/* overload */;
 extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALDrawMultiLineText(const System::UnicodeString aText, System::Types::TRectF &aRect, bool &aTextBreaked, TALDrawMultiLineTextOptions* const aOptions)/* overload */;
 extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALDrawMultiLineText(const System::UnicodeString aText, System::Types::TRectF &aRect, TALDrawMultiLineTextOptions* const aOptions)/* overload */;
 extern DELPHI_PACKAGE void __fastcall ALPaintRectangle(Fmx::Graphics::TCanvas* const aCanvas, const System::Types::TRectF &dstRect, Fmx::Graphics::TBrush* const Fill, Fmx::Graphics::TStrokeBrush* const Stroke, TALShadow* const Shadow = (TALShadow*)(0x0), const Fmx::Types::TSides Sides = (Fmx::Types::TSides() << Fmx::Types::TSide::Top << Fmx::Types::TSide::Left << Fmx::Types::TSide::Bottom << Fmx::Types::TSide::Right ), const Fmx::Types::TCorners Corners = (Fmx::Types::TCorners() << Fmx::Types::TCorner::TopLeft << Fmx::Types::TCorner::TopRight << Fmx::Types::TCorner::BottomLeft << Fmx::Types::TCorner::BottomRight ), const float XRadius = 0.000000E+00f, const float YRadius = 0.000000E+00f);
@@ -552,6 +556,18 @@ extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndFitResou
 extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndFitFileImageV1(const System::UnicodeString aFileName, const float W, const float H);
 extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndFitFileImageV2(const System::UnicodeString aFileName, const float W, const float H);
 extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndFitFileImageV3(const System::UnicodeString aFileName, const float W, const float H);
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALResizeAndStretchImageV1(System::Classes::TCustomMemoryStream* const aStream, const _di_TALResizeImageGetDestSizeFunct aGetDestSizeFunct)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALResizeAndStretchImageV1(System::Classes::TCustomMemoryStream* const aStream, const float W, const float H)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALResizeAndStretchImageV2(System::Classes::TCustomMemoryStream* const aStream, const _di_TALResizeImageGetDestSizeFunct aGetDestSizeFunct)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALResizeAndStretchImageV2(System::Classes::TCustomMemoryStream* const aStream, const float W, const float H)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALResizeAndStretchImageV3(System::Classes::TCustomMemoryStream* const aStream, const _di_TALResizeImageGetDestSizeFunct aGetDestSizeFunct)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALResizeAndStretchImageV3(System::Classes::TCustomMemoryStream* const aStream, const float W, const float H)/* overload */;
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndStretchResourceImageV1(const System::UnicodeString aResName, const float W, const float H);
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndStretchResourceImageV2(const System::UnicodeString aResName, const float W, const float H);
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndStretchResourceImageV3(const System::UnicodeString aResName, const float W, const float H);
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndStretchFileImageV1(const System::UnicodeString aFileName, const float W, const float H);
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndStretchFileImageV2(const System::UnicodeString aFileName, const float W, const float H);
+extern DELPHI_PACKAGE Fmx::Graphics::TBitmap* __fastcall ALLoadResizeAndStretchFileImageV3(const System::UnicodeString aFileName, const float W, const float H);
 }	/* namespace Alfmxcommon */
 #if !defined(DELPHIHEADER_NO_IMPLICIT_NAMESPACE_USE) && !defined(NO_USING_NAMESPACE_ALFMXCOMMON)
 using namespace Alfmxcommon;

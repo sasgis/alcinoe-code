@@ -352,6 +352,7 @@ type
     fBufSize: TsizeF;
     fBufText: string;
     fBufTextBreaked: Boolean;
+    fBufAllTextDrawed: Boolean;
     //-----
     {$IF DEFINED(IOS) or DEFINED(ANDROID)}
     FOpenGLContextLostId: integer;
@@ -542,6 +543,7 @@ type
     property YRadius: Single read FYRadius write SetYRadius;
     property LineSpacing: single read fLineSpacing write fLineSpacing;
     property TextIsHtml: boolean read fTextIsHtml write fTextIsHtml default false;
+    property TouchTargetExpansion;
   end;
 
 procedure ALLockTexts(const aParentControl: Tcontrol);
@@ -659,7 +661,7 @@ begin
   fBufSize := Size.Size;
 
   {$IFDEF debug}
-  ALLog('TALImage.MakeBufBitmap', 'TALImage.MakeBufBitmap', TalLogType.verbose);
+  ALLog('TALImage.MakeBufBitmap', 'Name: ' + Name, TalLogType.verbose);
   inc(AlDebugImageMakeBufBitmapCount);
   AlDebugImageMakeBufBitmapStopWatch.Start;
   try
@@ -709,7 +711,16 @@ begin
       //Stretch the image to fill the entire rectangle of the control.
       TALImageWrapMode.Stretch:
         begin
-          Result := nil; // todo
+          fBufBitmapRect := ALAlignDimensionToPixelRound(LocalRect, FScreenScale); // to have the pixel aligned width and height
+          {$IFDEF ALDPK}
+          if aFileName <> '' then fBufBitmap := ALLoadResizeAndStretchFileImageV3(aFileName, fBufBitmapRect.Width * FScreenScale, fBufBitmapRect.Height * FScreenScale)
+          else fBufBitmap := nil;
+          {$ELSE}
+          fBufBitmap := ALLoadResizeAndStretchResourceImageV3(fResourceName, fBufBitmapRect.Width * FScreenScale, fBufBitmapRect.Height * FScreenScale);
+          {$ENDIF}
+          result := fBufBitmap;
+          if result <> nil then fBufBitmapRect := TrectF.Create(0,0, result.Width/FScreenScale, result.Height/FScreenScale).
+                                                    CenterAt(fBufBitmapRect);
         end;
 
       //Tile (multiply) the image to cover the entire rectangle of the control:
@@ -984,7 +995,7 @@ begin
   fBufSize := Size.Size;
 
   {$IFDEF debug}
-  ALLog('TALRectangle.MakeBufBitmap', 'TALRectangle.MakeBufBitmap', TalLogType.verbose);
+  ALLog('TALRectangle.MakeBufBitmap', 'Name: ' + Name, TalLogType.verbose);
   inc(AlDebugRectangleMakeBufBitmapCount);
   AlDebugRectangleMakeBufBitmapStopWatch.Start;
   try
@@ -1275,7 +1286,7 @@ begin
   fBufSize := Size.Size;
 
   {$IFDEF debug}
-  ALLog('TALCircle.MakeBufBitmap', 'TALCircle.MakeBufBitmap', TalLogType.verbose);
+  ALLog('TALCircle.MakeBufBitmap', 'Name: ' + Name, TalLogType.verbose);
   inc(AlDebugCircleMakeBufBitmapCount);
   AlDebugCircleMakeBufBitmapStopWatch.Start;
   try
@@ -1528,7 +1539,7 @@ begin
   fBufSize := Size.Size;
 
   {$IFDEF debug}
-  ALLog('TALLine.MakeBufBitmap', 'TALLine.MakeBufBitmap', TalLogType.verbose);
+  ALLog('TALLine.MakeBufBitmap', 'Name: ' + Name, TalLogType.verbose);
   inc(AlDebugLineMakeBufBitmapCount);
   AlDebugLineMakeBufBitmapStopWatch.Start;
   try
@@ -1833,7 +1844,8 @@ begin
        ) and
        (
         (SameValue(fBufSize.cy, MaxSize.y, TEpsilon.position)) or // if we already calculate the buf for maxsize.y
-        (CompareValue(fbufBitmapRect.height, MaxSize.y, TEpsilon.position) <= 0) // if fbufBitmapRect.height <= MaxSize.y we can't do anything better
+        ((fBufAllTextDrawed) and
+         (CompareValue(fbufBitmapRect.height, MaxSize.y, TEpsilon.position) <= 0)) // if fbufBitmapRect.height <= MaxSize.y and all text was drawed then we can't do anything better
        )
       )
      ) and
@@ -1853,7 +1865,9 @@ begin
   fBufText := fTextControl.Text;
 
   {$IFDEF debug}
-  ALLog('TALDoubleBufferedTextLayout.MakeBufBitmap', 'text:' + fBufText + ' - MaxSize: '+floattostr(fBufSize.cX)+'x'+floattostr(fBufSize.cY), TalLogType.verbose);
+  ALLog('TALDoubleBufferedTextLayout.MakeBufBitmap', 'Name: ' + fTextControl.Name +
+                                                     'text:' + fBufText +
+                                                     ' - MaxSize: '+floattostr(fBufSize.cX)+'x'+floattostr(fBufSize.cY), TalLogType.verbose);
   inc(AlDebugTextMakeBufBitmapCount);
   AlDebugTextMakeBufBitmapStopWatch.Start;
   try
@@ -1909,7 +1923,15 @@ begin
     fBufBitmap := ALDrawMultiLineText(fBufText, // const aText: String; // support only basic html tag like <b>...</b>, <i>...</i>, <font color="#ffffff">...</font> and <span id="xxx">...</span>
                                       fBufBitmapRect, // var aRect: TRectF; // in => the constraint boundaries in real pixel. out => the calculated rect that contain the html in real pixel
                                       fBufTextBreaked,
+                                      fBufAllTextDrawed,
                                       aOptions);
+    {$IFDEF debug}
+    ALLog('TALDoubleBufferedTextLayout.MakeBufBitmap.ALDrawMultiLineText', 'Name: ' + fTextControl.Name +
+                                                                           'text:' + fBufText +
+                                                                           ' - fBufBitmapRect: '+floattostr(fBufBitmapRect.width)+'x'+floattostr(fBufBitmapRect.height) +
+                                                                           ' - fBufTextBreaked: '+ BoolToStr(fBufTextBreaked, true) +
+                                                                           ' - fBufAllTextDrawed: '+ BoolToStr(fBufAllTextDrawed, true), TalLogType.verbose);
+    {$endif}
 
     //align fbufBitmapRect
     if aOptions.AutoSize and (not fBufAutosize) then begin

@@ -8,37 +8,6 @@ Version:      4.00
 
 Description:  Alcinoe Common Functions
 
-Legal issues: Copyright (C) 1999-2013 by Arkadia Software Engineering
-
-              This software is provided 'as-is', without any express
-              or implied warranty.  In no event will the author be
-              held liable for any  damages arising from the use of
-              this software.
-
-              Permission is granted to anyone to use this software
-              for any purpose, including commercial applications,
-              and to alter it and redistribute it freely, subject
-              to the following restrictions:
-
-              1. The origin of this software must not be
-                 misrepresented, you must not claim that you wrote
-                 the original software. If you use this software in
-                 a product, an acknowledgment in the product
-                 documentation would be appreciated but is not
-                 required.
-
-              2. Altered source versions must be plainly marked as
-                 such, and must not be misrepresented as being the
-                 original software.
-
-              3. This notice may not be removed or altered from any
-                 source distribution.
-
-              4. You must register this software by sending a picture
-                 postcard to the author. Use a nice stamp and mention
-                 your name, street address, EMail address and any
-                 comment you like to say.
-
 Know bug :
 
 History :     09/01/2005: correct then AlEmptyDirectory function
@@ -57,6 +26,10 @@ interface
 {$IF CompilerVersion >= 25} {Delphi XE4}
   {$LEGACYIFEND ON} // http://docwiki.embarcadero.com/RADStudio/XE4/en/Legacy_IFEND_(Delphi)
 {$IFEND}
+
+{$IFDEF IOS}
+uses iOSapi.Foundation;
+{$ENDIF}
 
 {~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 Type TalLogType = (VERBOSE, DEBUG, INFO, WARN, ERROR, ASSERT);
@@ -78,6 +51,9 @@ Function AlIntToBool(Value:integer):boolean;
 Function ALMediumPos(LTotal, LBorder, LObject : integer):Integer;
 function AlLocalDateTimeToUTCDateTime(Const aLocalDateTime: TDateTime): TdateTime;
 function AlUTCDateTimeToLocalDateTime(Const aUTCDateTime: TDateTime): TdateTime;
+{$IFDEF IOS}
+function ALNSDateToUTCDateTime(const ADateTime: NSDate): TDateTime;
+{$ENDIF}
 function ALUTCNow: TDateTime;
 function ALUnixMsToDateTime(const aValue: Int64): TDateTime;
 function ALDateTimeToUnixMs(const aValue: TDateTime): Int64;
@@ -109,7 +85,6 @@ uses system.Classes,
      ALAndroidApi,
      {$IFEND}
      {$IF defined(IOS)}
-     iOSapi.Foundation,
      Macapi.Helpers,
      {$IFEND}
      system.sysutils,
@@ -190,6 +165,17 @@ function AlUTCDateTimeToLocalDateTime(Const aUTCDateTime: TDateTime): TdateTime;
 begin
   result := TTimeZone.Local.ToLocalTime(aUTCDateTime);
 end;
+
+{**********}
+{$IFDEF IOS}
+function ALNSDateToUTCDateTime(const ADateTime: NSDate): TDateTime;
+begin
+  if ADateTime <> nil then
+    Result := ADateTime.TimeIntervalSince1970 / SecsPerDay + EncodeDate(1970, 1, 1)
+  else
+    Result := 0.0;
+end;
+{$ENDIF}
 
 {*************************}
 {The same like Now but used
