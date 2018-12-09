@@ -280,6 +280,7 @@ const
 // All implicit string casts have been verified to be correct
 { $WARN IMPLICIT_STRING_CAST OFF}
 
+{$IFDEF AL_PCRE}
 {$IFNDEF NEXTGEN}
 type
   TALPerlRegExReplaceEvent = procedure(Sender: TObject; var ReplaceWith: AnsiString) of object;
@@ -449,6 +450,7 @@ type
   end;
 
   ERegularExpressionError = class(Exception);
+{$ENDIF}
 {$ENDIF}
 
 var ALMove: procedure (const Source; var Dest; Count: NativeInt);
@@ -1539,6 +1541,7 @@ begin
   end;
 end;
 
+{$IFDEF AL_PCRE}
 {*****************************}
 procedure TALPerlRegEx.CleanUp;
 begin
@@ -2386,6 +2389,7 @@ begin
   ARegEx.Subject := FSubject;
   ARegEx.Start := FStart;
 end;
+{$ENDIF}
 
 {***********************************************************************************************}
 function ALIfThen(AValue: Boolean; const ATrue: AnsiString; AFalse: AnsiString = ''): AnsiString;
