@@ -625,6 +625,12 @@ begin
         SECURITY_FLAG_IGNORE_WRONG_USAGE;
       CheckError(not InternetSetOptionA(Request, INTERNET_OPTION_SECURITY_FLAGS, Pointer(@dwFlags), SizeOf(dwFlags)));
     end;
+    
+    if FURLScheme = INTERNET_SCHEME_HTTPS then begin
+      // HTTP/2 (supported on Windows 10, version 1507 and later)
+      dwFlags := 2 {HTTP_PROTOCOL_FLAG_HTTP2};
+      InternetSetOptionA(Request, 148 {INTERNET_OPTION_ENABLE_HTTP_PROTOCOL}, Pointer(@dwFlags), SizeOf(dwFlags));
+    end;
 
     { Timeouts }
     if ConnectTimeout > 0 then CheckError(not InternetSetOptionA(Request, INTERNET_OPTION_CONNECT_TIMEOUT, Pointer(@ConnectTimeout), SizeOf(ConnectTimeout)));
