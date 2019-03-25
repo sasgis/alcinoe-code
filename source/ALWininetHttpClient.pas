@@ -462,7 +462,21 @@ procedure TALWinInetHTTPClient.Connect;
     Result := 0;
     if whttpIo_From_Cache in InternetOptions then Result := result or INTERNET_FLAG_FROM_CACHE;
     if whttpIo_Offline in InternetOptions then Result := result or INTERNET_FLAG_OFFLINE;
+    if FURLScheme = INTERNET_SCHEME_HTTPS then begin
+      if FIgnoreSecurityErrors then begin
+        Result := Result or SECURITY_SET_MASK;
+      end else begin
+        if whttpIo_IGNORE_CERT_CN_INVALID in InternetOptions then
+          Result := result or SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+        if whttpIo_IGNORE_CERT_DATE_INVALID in InternetOptions then
+          Result := result or SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+      end;
+    end;
   end;
+
+const
+  HTTP_PROTOCOL_FLAG_HTTP2: DWORD = 2;
+  INTERNET_OPTION_ENABLE_HTTP_PROTOCOL = 148;
 
 const AccessTypeArr: Array[TALWinInetHttpInternetOpenAccessType] of DWord = (INTERNET_OPEN_TYPE_DIRECT,
                                                                              INTERNET_OPEN_TYPE_PRECONFIG,
@@ -505,6 +519,12 @@ begin
       CheckError(InternetSetStatusCallbackResult = pointer(INTERNET_INVALID_STATUS_CALLBACK));
     end;
 
+    if (FURLScheme = INTERNET_SCHEME_HTTPS) and (Win32MajorVersion >= 10) then begin
+      // HTTP/2 (supported on Windows 10, version 1507 and later)
+      InternetSetOptionA(FInetRoot, INTERNET_OPTION_ENABLE_HTTP_PROTOCOL,
+        @HTTP_PROTOCOL_FLAG_HTTP2, SizeOf(DWORD));
+    end;
+
     {init FInetConnect}
     FInetConnect := InternetConnectA(FInetRoot,
                                      PAnsiChar(FURLHost),
@@ -545,8 +565,6 @@ function TALWinInetHTTPClient.Send(aRequestDataStream: TStream): Integer;
     Result := 0;
     if whttpIo_CACHE_IF_NET_FAIL in InternetOptions then Result := result or INTERNET_FLAG_CACHE_IF_NET_FAIL;
     if whttpIo_HYPERLINK in InternetOptions then Result := result or INTERNET_FLAG_HYPERLINK;
-    if whttpIo_IGNORE_CERT_CN_INVALID in InternetOptions then Result := result or INTERNET_FLAG_IGNORE_CERT_CN_INVALID;
-    if whttpIo_IGNORE_CERT_DATE_INVALID in InternetOptions then Result := result or INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
     if whttpIo_IGNORE_REDIRECT_TO_HTTP in InternetOptions then Result := result or INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP;
     if whttpIo_IGNORE_REDIRECT_TO_HTTPS in InternetOptions then Result := result or INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS;
     if whttpIo_KEEP_CONNECTION in InternetOptions then Result := result or INTERNET_FLAG_KEEP_CONNECTION;
@@ -586,15 +604,12 @@ function TALWinInetHTTPClient.Send(aRequestDataStream: TStream): Integer;
 
 var Request: HINTERNET;
     RetVal: DWord;
-    dwFlags: DWORD;
-    BuffLen: Cardinal;
     BuffSize, Len: Integer;
     INBuffer: _INTERNET_BUFFERSA;
     Buffer: TMemoryStream;
     StrStr: TALStringStream;
     AcceptTypes: array of PAnsiChar;
     aHeader: AnsiString;
-
 begin
   { Connect }
   Connect;
@@ -615,22 +630,6 @@ begin
                                 DWORD_PTR(Self));
 
     CheckError(not Assigned(Request));
-
-    if FIgnoreSecurityErrors and (FURLScheme = INTERNET_SCHEME_HTTPS) then begin
-      BuffLen := SizeOf(dwFlags);
-      CheckError(not InternetQueryOptionA(Request, INTERNET_OPTION_SECURITY_FLAGS, Pointer(@dwFlags), BuffLen));
-      dwFlags := dwFlags or
-        SECURITY_FLAG_IGNORE_REVOCATION or
-        SECURITY_FLAG_IGNORE_UNKNOWN_CA or
-        SECURITY_FLAG_IGNORE_WRONG_USAGE;
-      CheckError(not InternetSetOptionA(Request, INTERNET_OPTION_SECURITY_FLAGS, Pointer(@dwFlags), SizeOf(dwFlags)));
-    end;
-    
-    if FURLScheme = INTERNET_SCHEME_HTTPS then begin
-      // HTTP/2 (supported on Windows 10, version 1507 and later)
-      dwFlags := 2 {HTTP_PROTOCOL_FLAG_HTTP2};
-      InternetSetOptionA(Request, 148 {INTERNET_OPTION_ENABLE_HTTP_PROTOCOL}, Pointer(@dwFlags), SizeOf(dwFlags));
-    end;
 
     { Timeouts }
     if ConnectTimeout > 0 then CheckError(not InternetSetOptionA(Request, INTERNET_OPTION_CONNECT_TIMEOUT, Pointer(@ConnectTimeout), SizeOf(ConnectTimeout)));
