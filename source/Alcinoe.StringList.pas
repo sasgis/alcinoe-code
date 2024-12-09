@@ -863,6 +863,19 @@ Uses
   Alcinoe.StringUtils,
   Alcinoe.Common;
 
+{$IF CompilerVersion < 36.0}
+function ListIndexErrorMsg(AIndex, AMaxIndex: NativeInt; AListObj: TObject): string;
+var s: string;
+begin
+  if AListObj <> nil then s := AListObj.ClassName else s := '<nil>';
+  Result := Format('List index out of bounds (%d)', [AIndex]);
+  if AMaxIndex < 0 then
+    Result := Result + Format('.  %s is empty', [s])
+  else
+    Result := Result + Format('.  %s range is 0..%d', [s, AMaxIndex]);
+end;
+{$ENDIF}
+
 {**************************************************************}
 constructor TALStringsEnumeratorA.Create(AStrings: TALStringsA);
 begin

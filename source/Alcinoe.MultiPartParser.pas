@@ -20,6 +20,8 @@ Uses
 
 type
 
+  TALListIndexType = {$IF CompilerVersion >= 36.0} NativeInt {$ELSE} Integer {$ENDIF};
+
   {--Single multipart Object-------------}
   TALMultiPartBaseContent = class(TObject)
   private
@@ -61,15 +63,15 @@ type
   TALMultiPartBaseContents = class(TObjectList)
   private
   protected
-    function GetItem(Index: NativeInt): TALMultiPartBaseContent;
-    procedure SetItem(Index: NativeInt; AObject: TALMultiPartBaseContent);
+    function GetItem(Index: TALListIndexType): TALMultiPartBaseContent;
+    procedure SetItem(Index: TALListIndexType; AObject: TALMultiPartBaseContent);
   public
     Function Add: TALMultiPartBaseContent; overload;
     function Add(AObject: TALMultiPartBaseContent): Integer; overload;
     function Remove(AObject: TALMultiPartBaseContent): Integer;
     function IndexOf(AObject: TALMultiPartBaseContent): Integer;
     procedure Insert(Index: Integer; AObject: TALMultiPartBaseContent);
-    property Items[Index: NativeInt]: TALMultiPartBasecontent read GetItem write SetItem; default;
+    property Items[Index: TALListIndexType]: TALMultiPartBasecontent read GetItem write SetItem; default;
   end;
 
   {--TAlMultiPartBaseStream-------------------}
@@ -160,15 +162,15 @@ type
   TALMultiPartAlternativeContents = class(TALMultiPartBaseContents)
   private
   protected
-    function GetItem(Index: NativeInt): TALMultiPartAlternativeContent;
-    procedure SetItem(Index: NativeInt; AObject: TALMultiPartAlternativeContent);
+    function GetItem(Index: TALListIndexType): TALMultiPartAlternativeContent;
+    procedure SetItem(Index: TALListIndexType; AObject: TALMultiPartAlternativeContent);
   public
     Function Add: TALMultiPartAlternativeContent; overload;
     function Add(AObject: TALMultiPartAlternativeContent): Integer; overload;
     function Remove(AObject: TALMultiPartAlternativeContent): Integer;
     function IndexOf(AObject: TALMultiPartAlternativeContent): Integer;
     procedure Insert(Index: Integer; AObject: TALMultiPartAlternativeContent);
-    property Items[Index: NativeInt]: TALMultiPartAlternativecontent read GetItem write SetItem; default;
+    property Items[Index: TALListIndexType]: TALMultiPartAlternativecontent read GetItem write SetItem; default;
   end;
 
   {--TAlMultiPartAlternativeStream----------------------------}
@@ -239,15 +241,15 @@ type
   TALMultiPartFormDataContents = class(TALMultiPartBaseContents)
   private
   protected
-    function GetItem(Index: NativeInt): TALMultiPartFormDataContent;
-    procedure SetItem(Index: NativeInt; AObject: TALMultiPartFormDataContent);
+    function GetItem(Index: TALListIndexType): TALMultiPartFormDataContent;
+    procedure SetItem(Index: TALListIndexType; AObject: TALMultiPartFormDataContent);
   public
     Function Add: TALMultiPartFormDataContent; overload;
     function Add(AObject: TALMultiPartFormDataContent): Integer; overload;
     function Remove(AObject: TALMultiPartFormDataContent): Integer;
     function IndexOf(AObject: TALMultiPartFormDataContent): Integer;
     procedure Insert(Index: Integer; AObject: TALMultiPartFormDataContent);
-    property Items[Index: NativeInt]: TALMultiPartFormDatacontent read GetItem write SetItem; default;
+    property Items[Index: TALListIndexType]: TALMultiPartFormDatacontent read GetItem write SetItem; default;
   end;
 
   {--TAlMultiPartFormDataStream----------------------------}
@@ -334,15 +336,15 @@ type
   TALMultiPartMixedContents = class(TALMultiPartBaseContents)
   private
   protected
-    function GetItem(Index: NativeInt): TALMultiPartMixedContent;
-    procedure SetItem(Index: NativeInt; AObject: TALMultiPartMixedContent);
+    function GetItem(Index: TALListIndexType): TALMultiPartMixedContent;
+    procedure SetItem(Index: TALListIndexType; AObject: TALMultiPartMixedContent);
   public
     Function Add: TALMultiPartMixedContent; overload;
     function Add(AObject: TALMultiPartMixedContent): Integer; overload;
     function Remove(AObject: TALMultiPartMixedContent): Integer;
     function IndexOf(AObject: TALMultiPartMixedContent): Integer;
     procedure Insert(Index: Integer; AObject: TALMultiPartMixedContent);
-    property Items[Index: NativeInt]: TALMultiPartMixedcontent read GetItem write SetItem; default;
+    property Items[Index: TALListIndexType]: TALMultiPartMixedcontent read GetItem write SetItem; default;
   end;
 
   {--TAlMultiPartMixedStream----------------------------}
@@ -696,7 +698,7 @@ begin
 end;
 
 {***********************************************************************************}
-function TALMultiPartBaseContents.GetItem(Index: NativeInt): TALMultiPartBaseContent;
+function TALMultiPartBaseContents.GetItem(Index: TALListIndexType): TALMultiPartBaseContent;
 begin
   Result := TALMultiPartBaseContent(inherited Items[Index]);
 end;
@@ -720,7 +722,7 @@ begin
 end;
 
 {*********************************************************************************************}
-procedure TALMultiPartBaseContents.SetItem(Index: NativeInt; AObject: TALMultiPartBaseContent);
+procedure TALMultiPartBaseContents.SetItem(Index: TALListIndexType; AObject: TALMultiPartBaseContent);
 begin
   inherited Items[Index] := AObject;
 end;
@@ -896,7 +898,7 @@ begin
 end;
 
 {*************************************************************************************************}
-function TALMultiPartAlternativeContents.GetItem(Index: NativeInt): TALMultiPartAlternativeContent;
+function TALMultiPartAlternativeContents.GetItem(Index: TALListIndexType): TALMultiPartAlternativeContent;
 begin
   Result := TALMultiPartAlternativeContent(inherited Items[Index]);
 end;
@@ -920,7 +922,7 @@ begin
 end;
 
 {***********************************************************************************************************}
-procedure TALMultiPartAlternativeContents.SetItem(Index: NativeInt; AObject: TALMultiPartAlternativeContent);
+procedure TALMultiPartAlternativeContents.SetItem(Index: TALListIndexType; AObject: TALMultiPartAlternativeContent);
 begin
   inherited Items[Index] := AObject;
 end;
@@ -1025,7 +1027,7 @@ begin
 end;
 
 {*******************************************************************************************}
-function TALMultiPartFormDataContents.GetItem(Index: NativeInt): TALMultiPartFormDataContent;
+function TALMultiPartFormDataContents.GetItem(Index: TALListIndexType): TALMultiPartFormDataContent;
 begin
   Result := TALMultiPartFormDataContent(inherited Items[Index]);
 end;
@@ -1049,7 +1051,7 @@ begin
 end;
 
 {*****************************************************************************************************}
-procedure TALMultiPartFormDataContents.SetItem(Index: NativeInt; AObject: TALMultiPartFormDataContent);
+procedure TALMultiPartFormDataContents.SetItem(Index: TALListIndexType; AObject: TALMultiPartFormDataContent);
 begin
   inherited Items[Index] := AObject;
 end;
@@ -1274,7 +1276,7 @@ begin
 end;
 
 {*************************************************************************************}
-function TALMultiPartMixedContents.GetItem(Index: NativeInt): TALMultiPartMixedContent;
+function TALMultiPartMixedContents.GetItem(Index: TALListIndexType): TALMultiPartMixedContent;
 begin
   Result := TALMultiPartMixedContent(inherited Items[Index]);
 end;
@@ -1298,7 +1300,7 @@ begin
 end;
 
 {***********************************************************************************************}
-procedure TALMultiPartMixedContents.SetItem(Index: NativeInt; AObject: TALMultiPartMixedContent);
+procedure TALMultiPartMixedContents.SetItem(Index: TALListIndexType; AObject: TALMultiPartMixedContent);
 begin
   inherited Items[Index] := AObject;
 end;
